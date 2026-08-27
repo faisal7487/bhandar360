@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="124" viewBox="0 0 200 124" fill="none">
+  <g transform="translate(68 0)"><rect width="64" height="64" rx="16" fill="#169B62"></rect><path d="M29.91 8.09 A24 24 0 1 0 50.38 16.57" fill="none" stroke="#0E5A3D" stroke-width="4.4" stroke-linecap="round"></path>
+  <circle cx="40.21" cy="9.45" r="2.5" fill="#0E5A3D"></circle><g fill="none" stroke="#FFFFFF" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24.5 19 V45"></path>
+    <path d="M24.5 19 H32.5 a6.5 6.5 0 0 1 0 13 H24.5"></path>
+    <path d="M24.5 32 H34 a6.5 6.5 0 0 1 0 13 H24.5"></path>
+  </g></g>
+  <text text-anchor="middle" x="100" y="112" font-family="Outfit, 'Nunito Sans', system-ui, sans-serif" font-size="28" font-weight="600" letter-spacing="-0.70" fill="#1F2937">Bhandar<tspan fill="#169B62">360</tspan></text>
+</svg>

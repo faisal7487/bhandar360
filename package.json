@@ -1,0 +1,12 @@
+{
+  "name": "bhandar360",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/app",
+    "start": "npm run start --workspace=apps/app",
+    "seed": "npm run seed --workspace=apps/app"
+  }
+}

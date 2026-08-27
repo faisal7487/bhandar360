@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.local
+apps/app/server/db/*.db
+apps/app/server/db/*.db-shm
+apps/app/server/db/*.db-wal
