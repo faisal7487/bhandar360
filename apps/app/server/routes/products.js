@@ -80,11 +80,61 @@ const importAll = db.transaction(async (businessId, rows) => {
   return count;
 });
 
+const normSku = (v) => (v === undefined || v === null ? '' : String(v).trim());
+
+// Split the incoming rows into the ones we'll import and the duplicates we'd
+// skip. A row is a duplicate if its (non-empty) SKU already exists for this
+// business, or if the same SKU appeared earlier in the same file. Blank SKUs
+// are never treated as duplicates (they're exempt from products_business_sku_uniq).
+async function partitionImport(businessId, items) {
+  const named = items.filter((r) => r && r.name);
+  const skus = [...new Set(named.map((r) => normSku(r.sku)).filter(Boolean))];
+
+  let existing = new Set();
+  if (skus.length) {
+    const placeholders = skus.map(() => '?').join(', ');
+    const rows = await db
+      .prepare(`SELECT sku FROM products WHERE business_id = ? AND sku IN (${placeholders})`)
+      .all(businessId, ...skus);
+    existing = new Set(rows.map((r) => r.sku));
+  }
+
+  const seen = new Set();
+  const keep = [];
+  const duplicates = [];
+  for (const row of named) {
+    const sku = normSku(row.sku);
+    if (sku && existing.has(sku)) {
+      duplicates.push({ sku, name: row.name, reason: 'exists' });
+    } else if (sku && seen.has(sku)) {
+      duplicates.push({ sku, name: row.name, reason: 'repeated' });
+    } else {
+      if (sku) seen.add(sku);
+      keep.push(row);
+    }
+  }
+  return { keep, duplicates };
+}
+
 router.post('/import', ah(async (req, res) => {
-  const items = Array.isArray((req.body || {}).items) ? req.body.items : [];
+  const body = req.body || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+  const { keep, duplicates } = await partitionImport(req.user.business_id, items);
+
+  // First pass: if there are duplicates and the client hasn't confirmed, report
+  // them and import nothing — the UI asks the user before skipping anything.
+  if (duplicates.length && !body.skipDuplicates) {
+    return res.json({
+      needsConfirmation: true,
+      duplicates,
+      newCount: keep.length,
+      dupCount: duplicates.length,
+    });
+  }
+
   try {
-    const created = await importAll(req.user.business_id, items);
-    res.status(201).json({ created });
+    const created = await importAll(req.user.business_id, keep);
+    res.status(201).json({ created, skipped: duplicates.length });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

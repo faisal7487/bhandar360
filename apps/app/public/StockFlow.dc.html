@@ -805,11 +805,27 @@ class Component extends DCLogic {
         }).filter(o=>o.name);
         if(!items.length){this.toast('No valid rows found — make sure the CSV has a Name column');return}
         const r=await this.api('/api/products/import',{method:'POST',body:{items}});
+        if(r&&r.needsConfirmation){this.setState({importConfirm:{items,duplicates:r.duplicates||[],newCount:r.newCount}});return}
         await this.refresh('products','/api/products');
-        this.toast(r.created+' '+this.term.items.toLowerCase()+' imported');
+        this.toast(this.importedMsg(r));
       }catch(e){this.toast('Could not import CSV — '+e.message)}
     };
     reader.readAsText(file);
+  };
+  importedMsg=(r)=>{
+    const n=this.term.items.toLowerCase();
+    let m=(r.created||0)+' '+n+' imported';
+    if(r.skipped)m+=' · '+r.skipped+' duplicate'+(r.skipped>1?'s':'')+' skipped';
+    return m;
+  };
+  confirmImportSkipDuplicates=async()=>{
+    const c=this.state.importConfirm;if(!c)return;
+    try{
+      const r=await this.api('/api/products/import',{method:'POST',body:{items:c.items,skipDuplicates:true}});
+      await this.refresh('products','/api/products');
+      this.setState({importConfirm:null});
+      this.toast(this.importedMsg(r));
+    }catch(e){this.setState({importConfirm:null});this.toast('Could not import CSV — '+e.message)}
   };
   openProductImport=()=>{
     const el=document.getElementById('sfProductCsvInput');
@@ -1875,6 +1891,24 @@ class Component extends DCLogic {
         this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'This will deduct raw materials, add finished goods to inventory, and recalculate cost for '+c.name+'.'),
         this.h('div',{style:{display:'flex',gap:10}},this.h('button',{onClick:()=>this.setState({prodConfirm:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),this.h('button',{onClick:this.runProduction,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,cursor:'pointer'}},'Confirm & run'))));
   }
+  renderImportConfirm(){
+    const c=this.state.importConfirm||{};
+    const dups=c.duplicates||[];
+    const t=this.term;
+    const shown=dups.slice(0,50);
+    const list=shown.map((d,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:12,padding:'8px 12px',borderTop:i?'1px solid var(--surface-2)':'none',fontSize:13}},
+      this.h('span',{style:{fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},d.name||'(no name)'),
+      this.h('span',{style:{color:'var(--muted)',whiteSpace:'nowrap',flexShrink:0}},(d.sku?'SKU '+d.sku+' · ':'')+(d.reason==='exists'?'already in inventory':'repeated in file'))));
+    if(dups.length>shown.length)list.push(this.h('div',{key:'more',style:{padding:'8px 12px',borderTop:'1px solid var(--surface-2)',fontSize:12,color:'var(--muted)'}},'+ '+(dups.length-shown.length)+' more'));
+    return this.h('div',{key:'ic',onClick:()=>this.setState({importConfirm:null}),style:{position:'fixed',inset:0,zIndex:95,background:'rgba(15,23,42,.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:24,animation:'sfFade .18s ease both'}},
+      this.h('div',{onClick:e=>e.stopPropagation(),style:{width:'100%',maxWidth:480,background:'var(--surface)',borderRadius:18,padding:26,boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)',animation:'sfScale .2s ease both'}},
+        this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:6}},dups.length+' duplicate '+(dups.length>1?t.items.toLowerCase():t.item.toLowerCase())+' found'),
+        this.h('p',{style:{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:14}},'These rows match a SKU that already exists in your inventory or repeats earlier in the file. Continue to skip them and import the remaining ',this.h('strong',null,c.newCount),' row'+(c.newCount===1?'':'s')+'.'),
+        this.h('div',{style:{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:12,marginBottom:18}},list),
+        this.h('div',{style:{display:'flex',gap:10}},
+          this.h('button',{onClick:()=>this.setState({importConfirm:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
+          this.h('button',{disabled:!c.newCount,onClick:this.confirmImportSkipDuplicates,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:c.newCount?'#169B62':'var(--border)',color:'#fff',fontWeight:700,cursor:c.newCount?'pointer':'not-allowed'}},c.newCount?('Skip '+dups.length+' & import '+c.newCount):'Nothing left to import'))));
+  }
 
   // ============ DELIVERY DATA ============
   delColor(s){
@@ -2153,6 +2187,7 @@ class Component extends DCLogic {
       this.state.productModal&&this.renderProductModal(),
       this.state.lossModal&&this.renderLossModal(),
       this.state.prodConfirm&&this.renderProdConfirm(),
+      this.state.importConfirm&&this.renderImportConfirm(),
       this.state.billingModal&&this.renderBillingModal(),
       this.state.invBuilder&&this.renderInvBuilderModal(),
       this.state.poBuilder&&this.renderPoBuilderModal(),
