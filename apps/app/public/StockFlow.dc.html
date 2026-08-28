@@ -378,6 +378,7 @@ class Component extends DCLogic {
     invFilter: 'all',
     invSearch: '',
     prodConfirm: null,
+    delProduct: null,
     delTab: 'overview',
     selectedDelivery: null,
     createDelModal: false,
@@ -721,7 +722,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     const f=this.state.productForm||{};
     const wh=this.warehouses.find(w=>w.name===f.warehouse);
@@ -733,6 +734,16 @@ class Component extends DCLogic {
       this.setState({productModal:null,productForm:null});
       this.toast(this.term.item+' saved successfully');
     }catch(e){this.toast('Could not save item — '+e.message)}
+  };
+  askDeleteProduct=(p)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delProduct:p,quickAddOpen:false});};
+  confirmDeleteProduct=async()=>{
+    const p=this.state.delProduct;if(!p)return;
+    try{
+      await this.api('/api/products/'+p.id,{method:'DELETE'});
+      await this.refresh('products','/api/products');
+      this.setState({delProduct:null,productModal:null,productForm:null,selectedProduct:null,view:this.state.view==='inventory-detail'?'inventory':this.state.view});
+      this.toast(this.term.item+' deleted');
+    }catch(e){this.setState({delProduct:null});this.toast('Could not delete '+this.term.item.toLowerCase()+' — '+e.message)}
   };
   openLoss=()=>this.setState({lossModal:true,lossForm:{product_id:(this.products[0]||{}).id,branch_id:(this.branches[0]||{}).id,qty:'',reason:'Expired',notes:''},quickAddOpen:false});
   setLossField=(k)=>(e)=>this.setState(s=>({lossForm:{...s.lossForm,[k]:e.target.value}}));
@@ -1263,7 +1274,8 @@ class Component extends DCLogic {
           this.td(this.bdt(p.sell),{mono:true,bold:true}),
           this.td(this.badge(st.label,st.color,st.bg)),
           this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
-            this.h('span',{onClick:(e)=>{e.stopPropagation();this.editProduct(p)()},style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}})),{align:'right'}))})));
+            this.h('span',{title:'Edit',onClick:(e)=>{e.stopPropagation();this.editProduct(p)()},style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}}),
+            this.h('span',{title:'Delete',onClick:this.askDeleteProduct(p),style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'}))})));
   }
 
   // ============ PRODUCT DETAIL ============
@@ -1285,7 +1297,7 @@ class Component extends DCLogic {
             this.h('h2',{key:'n',style:{fontSize:20,fontWeight:800,letterSpacing:'-.01em'}},p.name),
             this.h('div',{key:'sk',style:{fontSize:13,color:'var(--muted)',marginTop:2,marginBottom:12}},'SKU '+p.sku),
             this.h('div',{key:'bd',style:{marginBottom:12}},this.badge(st.label,st.color,st.bg)),
-            this.h('div',{key:'bt',style:{display:'flex',gap:8}},this.btn('Edit',{icon:I.edit,variant:'ghost',size:'sm',onClick:this.editProduct(p)}),this.btn('Restock',{icon:I.plus,variant:'soft',size:'sm',onClick:this.go('purchases')}))
+            this.h('div',{key:'bt',style:{display:'flex',gap:8,flexWrap:'wrap'}},this.btn('Edit',{icon:I.edit,variant:'ghost',size:'sm',onClick:this.editProduct(p)}),this.btn('Restock',{icon:I.plus,variant:'soft',size:'sm',onClick:this.go('purchases')}),this.btn('Delete',{icon:I.trash,variant:'ghost',size:'sm',onClick:this.askDeleteProduct(p)}))
           ],{padding:18}),
           this.card([
             this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:14}},'Pricing'),
@@ -1891,6 +1903,18 @@ class Component extends DCLogic {
         this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'This will deduct raw materials, add finished goods to inventory, and recalculate cost for '+c.name+'.'),
         this.h('div',{style:{display:'flex',gap:10}},this.h('button',{onClick:()=>this.setState({prodConfirm:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),this.h('button',{onClick:this.runProduction,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,cursor:'pointer'}},'Confirm & run'))));
   }
+  renderDeleteProductConfirm(){
+    const p=this.state.delProduct||{};
+    const I=this.icons,t=this.term;
+    return this.h('div',{key:'dpc',onClick:()=>this.setState({delProduct:null}),style:{position:'fixed',inset:0,zIndex:95,background:'rgba(15,23,42,.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:24,animation:'sfFade .18s ease both'}},
+      this.h('div',{onClick:e=>e.stopPropagation(),style:{width:'100%',maxWidth:420,background:'var(--surface)',borderRadius:18,padding:28,textAlign:'center',boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)',animation:'sfScale .2s ease both'}},
+        this.h('div',{style:{width:56,height:56,borderRadius:16,background:'color-mix(in srgb, #dc2626 16%, transparent)',color:'#dc2626',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'},dangerouslySetInnerHTML:{__html:I.trash}}),
+        this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete '+t.item.toLowerCase()+'?'),
+        this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},this.h('strong',null,p.name||''),' and its stock history will be permanently removed. This can’t be undone. Items with sales, loss or production history can’t be deleted — mark them inactive instead.'),
+        this.h('div',{style:{display:'flex',gap:10}},
+          this.h('button',{onClick:()=>this.setState({delProduct:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
+          this.h('button',{onClick:this.confirmDeleteProduct,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete '+t.item.toLowerCase()))));
+  }
   renderImportConfirm(){
     const c=this.state.importConfirm||{};
     const dups=c.duplicates||[];
@@ -2187,6 +2211,7 @@ class Component extends DCLogic {
       this.state.productModal&&this.renderProductModal(),
       this.state.lossModal&&this.renderLossModal(),
       this.state.prodConfirm&&this.renderProdConfirm(),
+      this.state.delProduct&&this.renderDeleteProductConfirm(),
       this.state.importConfirm&&this.renderImportConfirm(),
       this.state.billingModal&&this.renderBillingModal(),
       this.state.invBuilder&&this.renderInvBuilderModal(),
