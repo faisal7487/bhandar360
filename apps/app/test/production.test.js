@@ -144,6 +144,55 @@ test('a completed run cannot be completed again or deleted', async () => {
   assert.equal(del.status, 400);
 });
 
+test('a recipe can be deleted after use; completed runs survive, detached', async () => {
+  const { client } = tenant;
+  const mat = await makeProduct(client, 'Cocoa', 100, 3);
+  const bar = await makeProduct(client, 'Choc Bar', 0, 0);
+  const recipe = await client.post('/api/recipes', {
+    product_id: bar,
+    name: 'Choc batch',
+    yield_qty: 5,
+    labour_cost: 10,
+    components: [{ product_id: mat, qty: 2 }],
+  });
+  const run = await client.post('/api/production', { recipe_id: recipe.body.item.id, qty: 5, status: 'completed' });
+  assert.equal(run.status, 201);
+  const runId = run.body.item.id;
+
+  const del = await client.del(`/api/recipes/${recipe.body.item.id}`);
+  assert.equal(del.status, 200);
+  assert.equal((await client.get('/api/recipes')).body.items.find((r) => r.id === recipe.body.item.id), undefined);
+
+  const runs = await client.get('/api/production');
+  const kept = runs.body.items.find((r) => r.id === runId);
+  assert.ok(kept, 'the completed run is not deleted with the recipe');
+  assert.equal(kept.recipe_id, null, 'the run is detached from the deleted recipe');
+  assert.equal(kept.product_id, bar, 'the run keeps its finished product');
+  assert.ok(Number(kept.material_cost) > 0, 'frozen batch cost survives');
+});
+
+test('a recipe with an unfinished run cannot be deleted', async () => {
+  const { client } = tenant;
+  const mat = await makeProduct(client, 'Malt', 50, 1);
+  const drink = await makeProduct(client, 'Malt Drink', 0, 0);
+  const recipe = await client.post('/api/recipes', {
+    product_id: drink,
+    name: 'Malt batch',
+    yield_qty: 1,
+    labour_cost: 0,
+    components: [{ product_id: mat, qty: 1 }],
+  });
+  const draft = await client.post('/api/production', { recipe_id: recipe.body.item.id, qty: 3 });
+  assert.equal(draft.body.item.status, 'draft');
+
+  const blocked = await client.del(`/api/recipes/${recipe.body.item.id}`);
+  assert.equal(blocked.status, 400);
+
+  // Remove the draft, then the recipe deletes cleanly.
+  assert.equal((await client.del(`/api/production/${draft.body.item.id}`)).status, 200);
+  assert.equal((await client.del(`/api/recipes/${recipe.body.item.id}`)).status, 200);
+});
+
 test('production and recipes are 403 for a non-manufacturing industry', async () => {
   const other = await newTenant('production-pharma');
   try {

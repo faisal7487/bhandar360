@@ -123,15 +123,32 @@ router.put('/:id', ah(async (req, res) => {
   res.json({ item: await withComponents(recipe) });
 }));
 
+// Deleting a recipe is allowed even after it's been used: completed runs keep
+// their own frozen product_id / qty / material_cost / labour_cost, so their
+// history survives — they're just detached from the (now gone) recipe. A
+// non-completed run still *needs* its recipe to be completed, so that blocks
+// the delete until the draft is removed or run.
+const deleteRecipe = db.transaction(async (businessId, id) => {
+  const existing = await db.prepare('SELECT id FROM recipes WHERE id = ? AND business_id = ?').get(id, businessId);
+  if (!existing) return { notFound: true };
+
+  const draft = await db
+    .prepare("SELECT id FROM production_runs WHERE recipe_id = ? AND business_id = ? AND status <> 'completed' LIMIT 1")
+    .get(id, businessId);
+  if (draft) return { blocked: true };
+
+  await db.prepare('UPDATE production_runs SET recipe_id = NULL WHERE recipe_id = ? AND business_id = ?').run(id, businessId);
+  await db.prepare('DELETE FROM recipe_components WHERE recipe_id = ?').run(id);
+  await db.prepare('DELETE FROM recipes WHERE id = ?').run(id);
+  return { ok: true };
+});
+
 router.delete('/:id', ah(async (req, res) => {
-  const existing = await db.prepare('SELECT id FROM recipes WHERE id = ? AND business_id = ?').get(req.params.id, req.user.business_id);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-  const usedBy = await db.prepare("SELECT id FROM production_runs WHERE recipe_id = ? LIMIT 1").get(req.params.id);
-  if (usedBy) {
-    return res.status(400).json({ error: "This recipe has production runs against it — it can't be deleted." });
+  const result = await deleteRecipe(req.user.business_id, req.params.id);
+  if (result.notFound) return res.status(404).json({ error: 'Not found' });
+  if (result.blocked) {
+    return res.status(400).json({ error: 'This recipe has an unfinished production run — delete or complete that run first.' });
   }
-  await db.prepare('DELETE FROM recipe_components WHERE recipe_id = ?').run(req.params.id);
-  await db.prepare('DELETE FROM recipes WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 }));
 
