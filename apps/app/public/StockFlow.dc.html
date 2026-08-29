@@ -1303,7 +1303,7 @@ class Component extends DCLogic {
           this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
             this.h('span',{title:'Edit',onClick:(e)=>{e.stopPropagation();this.editProduct(p)()},style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}}),
             this.h('span',{title:'Delete',onClick:this.askDeleteProduct(p),style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'}))})),
-      pageCount>1?this.h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginTop:14,flexWrap:'wrap'}},
+      totalRows>0?this.h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginTop:14,flexWrap:'wrap'}},
         this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Showing '+((page-1)*PER+1)+'–'+Math.min(page*PER,totalRows)+' of '+totalRows+' '+t.items.toLowerCase()),
         this.h('div',{style:{display:'flex',alignItems:'center',gap:8}},
           this.h('button',{onClick:page>1?this.setInvPage(page-1):undefined,style:{padding:'7px 13px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',fontSize:13,fontWeight:700,color:'var(--text2)',cursor:page>1?'pointer':'not-allowed',opacity:page>1?1:.45}},'Prev'),
