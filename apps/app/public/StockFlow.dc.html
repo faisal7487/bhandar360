@@ -378,6 +378,7 @@ class Component extends DCLogic {
     toast: null,
     invFilter: 'all',
     invSearch: '',
+    invPage: 1,
     prodConfirm: null,
     delProduct: null,
     delProdRun: null,
@@ -998,7 +999,8 @@ class Component extends DCLogic {
       this.toast('Draft production run deleted');
     }catch(e){this.setState({delProdRun:null});this.toast('Could not delete run \u2014 '+e.message)}
   };
-  setInvFilter=(f)=>()=>this.setState({invFilter:f});
+  setInvFilter=(f)=>()=>this.setState({invFilter:f,invPage:1});
+  setInvPage=(n)=>()=>this.setState({invPage:n});
   onboNext=async()=>{
     const n=this.state.onbStep;
     if(n===1){
@@ -1263,6 +1265,11 @@ class Component extends DCLogic {
     else if(s.invFilter==='out')ps=ps.filter(p=>p.stock===0);
     else if(s.invFilter==='exp')ps=ps.filter(p=>{const d=this.daysTo(p.exp);return d<120&&d>0});
     const filters=[['all','All '+t.items,this.products.length],['low','Low stock',this.products.filter(p=>p.stock>0&&p.stock<p.min).length],['out','Out of stock',this.products.filter(p=>p.stock===0).length],['exp','Expiring',this.products.filter(p=>{const d=this.daysTo(p.exp);return d<120&&d>0}).length]];
+    const PER=50;
+    const totalRows=ps.length;
+    const pageCount=Math.max(1,Math.ceil(totalRows/PER));
+    const page=Math.min(Math.max(1,s.invPage||1),pageCount);
+    const pageRows=ps.slice((page-1)*PER,(page-1)*PER+PER);
     return this.h('div',{style:{maxWidth:1280,margin:'0 auto'}},
       this.pageHead('Inventory','Manage stock, batches and expiry across all '+this.products.length+' '+t.items.toLowerCase()+'.',[
         this.btn('Download template',{icon:I.down,variant:'ghost',onClick:this.downloadProductTemplate}),
@@ -1274,7 +1281,7 @@ class Component extends DCLogic {
           f[1],this.h('span',{style:{background:s.invFilter===f[0]?'#169B62':'var(--border)',color:s.invFilter===f[0]?'#fff':'var(--muted)',borderRadius:20,padding:'0 7px',fontSize:11.5}},f[2])))),
       this.table(
         [t.item,this.state.industry==='pharmacy'?'Batch / Expiry':'SKU / Supplier','Category','Stock','Cost','Sell',{t:'Status',align:'left'},{t:'',align:'right'}],
-        ps.map((p,i)=>{const st=this.stockStatus(p);const d=this.daysTo(p.exp);return this.h('tr',{key:i,'data-hover':'',onClick:this.openProduct(p),style:{cursor:'pointer'}},
+        pageRows.map((p,i)=>{const st=this.stockStatus(p);const d=this.daysTo(p.exp);return this.h('tr',{key:p.id,'data-hover':'',onClick:this.openProduct(p),style:{cursor:'pointer'}},
           this.td(this.h('div',{style:{display:'flex',alignItems:'center',gap:11}},
             this.h('span',{style:{width:38,height:38,borderRadius:9,background:'var(--surface-2)',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center'},dangerouslySetInnerHTML:{__html:I.box}}),
             this.h('div',null,this.h('div',{style:{fontWeight:700,color:'var(--text)'}},p.name),this.h('div',{style:{fontSize:12,color:'var(--muted)'}},p.generic||p.sku)))),
@@ -1288,7 +1295,13 @@ class Component extends DCLogic {
           this.td(this.badge(st.label,st.color,st.bg)),
           this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
             this.h('span',{title:'Edit',onClick:(e)=>{e.stopPropagation();this.editProduct(p)()},style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}}),
-            this.h('span',{title:'Delete',onClick:this.askDeleteProduct(p),style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'}))})));
+            this.h('span',{title:'Delete',onClick:this.askDeleteProduct(p),style:{width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'}))})),
+      pageCount>1?this.h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginTop:14,flexWrap:'wrap'}},
+        this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Showing '+((page-1)*PER+1)+'–'+Math.min(page*PER,totalRows)+' of '+totalRows+' '+t.items.toLowerCase()),
+        this.h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+          this.h('button',{onClick:page>1?this.setInvPage(page-1):undefined,style:{padding:'7px 13px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',fontSize:13,fontWeight:700,color:'var(--text2)',cursor:page>1?'pointer':'not-allowed',opacity:page>1?1:.45}},'Prev'),
+          this.h('span',{style:{fontSize:13,fontWeight:700,color:'var(--text2)'}},'Page '+page+' of '+pageCount),
+          this.h('button',{onClick:page<pageCount?this.setInvPage(page+1):undefined,style:{padding:'7px 13px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',fontSize:13,fontWeight:700,color:'var(--text2)',cursor:page<pageCount?'pointer':'not-allowed',opacity:page<pageCount?1:.45}},'Next'))):null);
   }
 
   // ============ PRODUCT DETAIL ============
