@@ -409,6 +409,12 @@ class Component extends DCLogic {
     avatarColor: 'linear-gradient(135deg,#169B62,#0d9488)',
     supplierModal: false,
     supplierForm: null,
+    supFilter: '',
+    supSel: [],
+    delSup: null,
+    delSupConfirm: '',
+    bulkDelSup: false,
+    bulkDelSupConfirm: '',
     customerModal: false,
     customerForm: null,
     expenseModal: false,
@@ -666,7 +672,8 @@ class Component extends DCLogic {
     const purchasesBySupplier={};
     (this.state.data.purchaseOrders||[]).forEach(po=>{const n=po.supplier_name;if(n)purchasesBySupplier[n]=(purchasesBySupplier[n]||0)+po.total});
     return (this.state.data.suppliers||[]).map(s=>({
-      name:s.name,_id:s.id,contact:s.contact||s.phone||'\u2014',items:0,
+      name:s.name,_id:s.id,contact:s.contact||s.phone||'\u2014',
+      rawContact:s.contact||'',phone:s.phone||'',email:s.email||'',items:0,
       balance:purchasesBySupplier[s.name]||0,due:s.balance>0?s.balance:0,
     }));
   }
@@ -747,7 +754,7 @@ class Component extends DCLogic {
   }
 
   // ---------- handlers ----------
-  go=(v)=>()=>this.setState({view:v,bizOpen:false,notifOpen:false,quickAddOpen:false,selectedProduct:null,productModal:null,invSelected:[]});
+  go=(v)=>()=>this.setState({view:v,bizOpen:false,notifOpen:false,quickAddOpen:false,selectedProduct:null,productModal:null,invSelected:[],supSel:[],supFilter:''});
   toast(msg){this.setState({toast:msg});clearTimeout(this._t);this._t=setTimeout(()=>this.setState({toast:null}),2600)}
   toggleSidebar=()=>this.setState(s=>({sidebarOpen:!s.sidebarOpen}));
   toggleBiz=()=>this.setState(s=>({bizOpen:!s.bizOpen,notifOpen:false,quickAddOpen:false}));
@@ -759,7 +766,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     if(this.state.busy)return;
     const f=this.state.productForm||{};
@@ -920,16 +927,47 @@ class Component extends DCLogic {
     if(f)this.importProductsCsv(f);
   };
   openSupplierModal=()=>this.setState({supplierModal:true,supplierForm:{name:'',contact:'',phone:'',email:'',balance:''}});
+  editSupplier=(s)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({supplierModal:true,supplierForm:{id:s._id,name:s.name,contact:s.rawContact||'',phone:s.phone||'',email:s.email||'',balance:s.due||''}});};
   setSupplierField=(k)=>(e)=>this.setState(s=>({supplierForm:{...s.supplierForm,[k]:e.target.value}}));
   saveSupplier=async()=>{
+    if(this.state.busy)return;
     const f=this.state.supplierForm||{};
     if(!f.name){this.toast('Enter a supplier name');return}
+    this.setState({busy:true});
     try{
-      await this.api('/api/suppliers',{method:'POST',body:{name:f.name,contact:f.contact,phone:f.phone,email:f.email,balance:parseFloat(f.balance)||0}});
+      const body={name:f.name,contact:f.contact,phone:f.phone,email:f.email,balance:parseFloat(f.balance)||0};
+      if(f.id)await this.api('/api/suppliers/'+f.id,{method:'PUT',body});
+      else await this.api('/api/suppliers',{method:'POST',body});
       await this.refresh('suppliers','/api/suppliers');
       this.setState({supplierModal:false,supplierForm:null});
-      this.toast('Supplier added');
-    }catch(e){this.toast('Could not add supplier — '+e.message)}
+      this.toast(f.id?'Supplier updated':'Supplier added');
+    }catch(e){this.toast('Could not save supplier — '+e.message)}
+    finally{this.setState({busy:false})}
+  };
+  setSupFilter=(e)=>this.setState({supFilter:e.target.value});
+  clearSupSel=()=>this.setState({supSel:[]});
+  toggleSupSel=(id)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState(s=>{const set=new Set(s.supSel);set.has(id)?set.delete(id):set.add(id);return{supSel:[...set]};});};
+  toggleSupSelAll=(ids)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState(s=>{const all=ids.length>0&&ids.every(i=>s.supSel.includes(i));return{supSel:all?s.supSel.filter(i=>!ids.includes(i)):[...new Set([...s.supSel,...ids])]};});};
+  askDeleteSupplier=(s)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delSup:s,delSupConfirm:''});};
+  setDelSupConfirm=(e)=>this.setState({delSupConfirm:e.target.value});
+  confirmDeleteSupplier=async()=>{
+    const s=this.state.delSup;if(!s)return;
+    if((this.state.delSupConfirm||'').trim()!==s.name)return;
+    try{
+      await this.api('/api/suppliers/'+s._id,{method:'DELETE'});
+      await this.refresh('suppliers','/api/suppliers');
+      this.setState({delSup:null,delSupConfirm:'',supSel:this.state.supSel.filter(i=>i!==s._id)});
+      this.toast('Supplier deleted');
+    }catch(e){this.setState({delSup:null,delSupConfirm:''});this.toast('Could not delete supplier — '+e.message)}
+  };
+  setBulkDelSupConfirm=(e)=>this.setState({bulkDelSupConfirm:e.target.value});
+  confirmBulkDeleteSuppliers=async()=>{
+    if((this.state.bulkDelSupConfirm||'').trim().toUpperCase()!=='DELETE')return;
+    const ids=this.state.supSel.slice();let ok=0,fail=0;
+    for(const id of ids){try{await this.api('/api/suppliers/'+id,{method:'DELETE'});ok++;}catch(e){fail++;}}
+    await this.refresh('suppliers','/api/suppliers');
+    this.setState({bulkDelSup:false,bulkDelSupConfirm:'',supSel:[]});
+    this.toast(ok+' suppliers deleted'+(fail?' · '+fail+' failed':''));
   };
   openCustomerModal=()=>this.setState({customerModal:true,customerForm:{name:'',contact:'',phone:'',email:'',credit_limit:''}});
   setCustomerField=(k)=>(e)=>this.setState(s=>({customerForm:{...s.customerForm,[k]:e.target.value}}));
@@ -1757,12 +1795,35 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
 
   // ============ SIMPLE TABLE VIEWS ============
   renderSuppliers(){
-    const I=this.icons;
+    const I=this.icons,st=this.state;
+    const q=(st.supFilter||'').trim().toLowerCase();
+    let sups=this.suppliers;
+    if(q)sups=sups.filter(x=>(x.name+' '+x.rawContact+' '+x.phone+' '+x.email).toLowerCase().includes(q));
+    const ids=sups.map(x=>x._id);
+    const selSet=new Set(st.supSel);
+    const allChecked=ids.length>0&&ids.every(i=>selSet.has(i));
+    const cbStyle={width:16,height:16,cursor:'pointer',accentColor:'#169B62'};
+    const iconBtn=(c)=>({width:30,height:30,borderRadius:8,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:c,cursor:'pointer'});
     return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
       this.pageHead('Suppliers','Manage vendors, purchase history and outstanding balances.',[this.btn('Add supplier',{icon:I.plus,onClick:this.openSupplierModal})]),
-      this.table(['Supplier','Contact','Items supplied','Total purchased','Outstanding',{t:'',align:'right'}],
-        this.suppliers.length===0?[this.h('tr',{key:'e'},this.td(this.h('div',{style:{padding:'32px 0',textAlign:'center',color:'var(--muted)'}},'No suppliers yet \u2014 add your first one.'),{}))]:
-        this.suppliers.map((s,i)=>this.h('tr',{key:i,'data-hover':'',style:{cursor:'pointer'}},this.td(this.h('div',{style:{display:'flex',alignItems:'center',gap:10}},this.h('span',{style:{width:34,height:34,borderRadius:9,background:'color-mix(in srgb, #2563eb 16%, transparent)',color:'#2563eb',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13}},s.name[0]),this.h('span',{style:{fontWeight:700}},s.name))),this.td(s.contact,{color:'var(--muted)'}),this.td(s.items+' items'),this.td(this.bdt(s.balance),{mono:true}),this.td(s.due>0?this.badge(this.bdt(s.due)+' due','#d97706','#fffbeb'):this.badge('Settled','#169B62','#e7f6ef')),this.td(s.due>0?this.btn('Pay',{variant:'soft',size:'sm',onClick:()=>this.toast('Supplier payment recorded')}):'',{align:'right'})))));
+      this.h('div',{style:{display:'flex',gap:10,alignItems:'center',marginBottom:14,flexWrap:'wrap'}},
+        this.h('input',{value:st.supFilter||'',onChange:this.setSupFilter,placeholder:'Search suppliers\u2026',style:{...this.inpStyle,maxWidth:280}}),
+        st.supSel.length>0?this.h('div',{style:{display:'flex',alignItems:'center',gap:10,marginLeft:'auto'}},
+          this.h('span',{style:{fontSize:13,fontWeight:700,color:'#0E5A3D'}},st.supSel.length+' selected'),
+          this.btn('Delete selected',{icon:I.trash,variant:'danger',size:'sm',onClick:()=>this.setState({bulkDelSup:true,bulkDelSupConfirm:''})}),
+          this.btn('Clear',{variant:'ghost',size:'sm',onClick:this.clearSupSel})):null),
+      this.table(
+        [{t:this.h('input',{type:'checkbox',checked:allChecked,onChange:this.toggleSupSelAll(ids),onClick:e=>e.stopPropagation(),style:cbStyle}),align:'left'},'Supplier','Contact','Total purchased','Outstanding',{t:'',align:'right'}],
+        sups.length===0?[this.h('tr',{key:'e'},this.td(this.h('div',{style:{padding:'32px 0',textAlign:'center',color:'var(--muted)'}},q?'No suppliers match "'+st.supFilter+'".':'No suppliers yet \u2014 add your first one.'),{}))]:
+        sups.map((s)=>this.h('tr',{key:s._id,'data-hover':'',onClick:this.editSupplier(s),style:{cursor:'pointer',background:selSet.has(s._id)?'color-mix(in srgb, #169B62 8%, transparent)':undefined}},
+          this.td(this.h('input',{type:'checkbox',checked:selSet.has(s._id),onChange:this.toggleSupSel(s._id),onClick:e=>e.stopPropagation(),style:cbStyle})),
+          this.td(this.h('div',{style:{display:'flex',alignItems:'center',gap:10}},this.h('span',{style:{width:34,height:34,borderRadius:9,background:'color-mix(in srgb, #2563eb 16%, transparent)',color:'#2563eb',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13}},s.name[0]),this.h('span',{style:{fontWeight:700}},s.name))),
+          this.td(s.contact,{color:'var(--muted)'}),
+          this.td(this.bdt(s.balance),{mono:true}),
+          this.td(s.due>0?this.badge(this.bdt(s.due)+' due','#d97706','#fffbeb'):this.badge('Settled','#169B62','#e7f6ef')),
+          this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+            this.h('span',{title:'Edit',onClick:this.editSupplier(s),style:iconBtn('var(--muted)'),dangerouslySetInnerHTML:{__html:I.edit}}),
+            this.h('span',{title:'Delete',onClick:this.askDeleteSupplier(s),style:iconBtn('#dc2626'),dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'})))));
   }
   renderCustomers(){
     const I=this.icons;
@@ -2087,8 +2148,30 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Contact person',{value:f.contact,onChange:sf('contact')}),
       this.field('Phone',{value:f.phone,onChange:sf('phone')}),
       this.field('Email',{value:f.email,onChange:sf('email')}),
-      this.field('Opening balance (due)',{value:f.balance,onChange:sf('balance'),ph:'0'}));
-    return this.modalShell('Add supplier','Add a vendor to purchase from.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save supplier',{icon:this.icons.check,onClick:this.saveSupplier})],560);
+      this.field(f.id?'Outstanding balance (due)':'Opening balance (due)',{value:f.balance,onChange:sf('balance'),ph:'0'}));
+    return this.modalShell(f.id?'Edit supplier':'Add supplier',f.id?'Update this vendor’s details.':'Add a vendor to purchase from.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn(f.id?'Save changes':'Save supplier',{icon:this.icons.check,onClick:this.saveSupplier,loading:this.state.busy})],560);
+  }
+  renderDeleteSupplierConfirm(){
+    const s=this.state.delSup||{};
+    const val=this.state.delSupConfirm||'';
+    const matches=val.trim()===s.name;
+    const body=this.h('div',null,
+      this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes ',this.h('strong',null,s.name),' from your suppliers. Purchase orders that reference this vendor keep their data. This cannot be undone.'),
+      this.field('Type "'+s.name+'" to confirm',{value:val,onChange:this.setDelSupConfirm,ph:s.name}));
+    return this.modalShell('Delete supplier','This action is permanent and cannot be undone.',body,
+      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({delSup:null,delSupConfirm:''})}),
+       this.btn('Delete supplier',{icon:this.icons.trash,variant:'danger',disabled:!matches,onClick:this.confirmDeleteSupplier})],520);
+  }
+  renderBulkDeleteSupConfirm(){
+    const n=this.state.supSel.length;
+    const val=this.state.bulkDelSupConfirm||'';
+    const ok=val.trim().toUpperCase()==='DELETE';
+    const body=this.h('div',null,
+      this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes the ',this.h('strong',null,n+' selected supplier'+(n===1?'':'s')),'. This cannot be undone.'),
+      this.field('Type DELETE to confirm',{value:val,onChange:this.setBulkDelSupConfirm,ph:'DELETE'}));
+    return this.modalShell('Delete '+n+' supplier'+(n===1?'':'s'),'This action is permanent and cannot be undone.',body,
+      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkDelSup:false,bulkDelSupConfirm:''})}),
+       this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,onClick:this.confirmBulkDeleteSuppliers})],520);
   }
   renderCustomerModal(){
     const f=this.state.customerForm||{};
@@ -2527,6 +2610,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.state.courierConfig&&this.renderCourierConfigModal(),
       this.state.trackModal&&this.renderTrackModal(),
       this.state.supplierModal&&this.renderSupplierModal(),
+      this.state.delSup&&this.renderDeleteSupplierConfirm(),
+      this.state.bulkDelSup&&this.renderBulkDeleteSupConfirm(),
       this.state.customerModal&&this.renderCustomerModal(),
       this.state.expenseModal&&this.renderExpenseModal(),
       this.state.teamModal&&this.renderTeamModal(),
