@@ -411,6 +411,10 @@ class Component extends DCLogic {
     lossForm: null,
     cart: [],
     invoiceItems: [],
+    invoiceSearch: '',
+    invoiceStatus: 'all',
+    invoicePage: 1,
+    delInvoice: null,
     toast: null,
     invFilter: 'all',
     invSearch: '',
@@ -639,10 +643,23 @@ class Component extends DCLogic {
     this.setState(s=>({data:{...s.data,[key]:r.items}}));
   }
   toggleTheme=()=>this.setState(s=>({theme:s.theme==='dark'?'light':'dark'}));
-  openInvBuilder=()=>this.setState({invBuilder:{cust:'',branch_id:(this.branches[0]&&this.branches[0].id)||'',lines:[{name:'',qty:1,price:0}]},quickAddOpen:false});
+  openInvBuilder=(inv)=>{
+    if(inv&&inv.id){
+      this.setState({quickAddOpen:false,invBuilder:{
+        id:inv.id,no:inv.no,
+        cust:inv.customerId?inv.customer:'',
+        branch_id:inv.branchId||(this.branches[0]&&this.branches[0].id)||'',
+        due:inv.due||'',status:inv.status||'sent',
+        lines:inv.items&&inv.items.length?inv.items.map(it=>({name:it.name,qty:it.qty,price:it.price})):[{name:'',qty:1,price:0}],
+      }});
+      return;
+    }
+    this.setState({invBuilder:{cust:'',branch_id:(this.branches[0]&&this.branches[0].id)||'',due:'',lines:[{name:'',qty:1,price:0}]},quickAddOpen:false});
+  };
   closeInvBuilder=()=>this.setState({invBuilder:null});
   invSetCust=(e)=>this.setState(s=>({invBuilder:{...s.invBuilder,cust:e.target.value}}));
   invSetBranch=(e)=>this.setState(s=>({invBuilder:{...s.invBuilder,branch_id:Number(e.target.value)}}));
+  invSetField=(k)=>(e)=>this.setState(s=>({invBuilder:{...s.invBuilder,[k]:e.target.value}}));
   invSetLine=(i,k,v)=>this.setState(s=>{const lines=s.invBuilder.lines.map((l,j)=>j===i?{...l,[k]:(k==='name'?v:(parseFloat(v)||0))}:l);return{invBuilder:{...s.invBuilder,lines}}});
   invAddLine=()=>this.setState(s=>({invBuilder:{...s.invBuilder,lines:[...s.invBuilder.lines,{name:'',qty:1,price:0}]}}));
   invRemoveLine=(i)=>this.setState(s=>({invBuilder:{...s.invBuilder,lines:s.invBuilder.lines.filter((_,j)=>j!==i)}}));
@@ -652,13 +669,28 @@ class Component extends DCLogic {
     const cust=this.customers.find(c=>c.name===b.cust);
     const lines=b.lines.filter(l=>l.name);
     if(!lines.length){this.toast('Add at least one line item');return}
+    const payload={customer_id:cust&&cust._id||null,branch_id:b.branch_id||null,due_date:b.due||null,lines};
+    if(b.id)payload.status=b.status;
     this.setState({busy:true});
     try{
-      await this.api('/api/invoices',{method:'POST',body:{customer_id:cust&&cust._id,branch_id:b.branch_id||null,lines}});
+      if(b.id)await this.api('/api/invoices/'+b.id,{method:'PUT',body:payload});
+      else await this.api('/api/invoices',{method:'POST',body:payload});
       await this.refresh('invoices','/api/invoices');
       this.setState({invBuilder:null});
-      this.toast('Invoice created');
-    }catch(e){this.toast('Could not create invoice — '+e.message)}
+      this.toast(b.id?'Invoice updated':'Invoice created');
+    }catch(e){this.toast('Could not save invoice — '+e.message)}
+    finally{this.setState({busy:false})}
+  };
+  askDeleteInvoice=(inv)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delInvoice:inv});};
+  confirmDeleteInvoice=async()=>{
+    const inv=this.state.delInvoice;if(!inv||this.state.busy)return;
+    this.setState({busy:true});
+    try{
+      await this.api('/api/invoices/'+inv.id,{method:'DELETE'});
+      await this.refresh('invoices','/api/invoices');
+      this.setState(s=>({delInvoice:null,selectedInvoiceId:s.selectedInvoiceId===inv.id?null:s.selectedInvoiceId}));
+      this.toast('Invoice deleted');
+    }catch(e){this.setState({delInvoice:null});this.toast('Could not delete invoice — '+e.message)}
     finally{this.setState({busy:false})}
   };
   tr=(en,bn)=>this.state.lang==='bn'?bn:en;
@@ -905,7 +937,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,recipeModal:null,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',supPay:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,delInvoice:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,recipeModal:null,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',supPay:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     if(this.state.busy)return;
     const f=this.state.productForm||{};
@@ -1707,6 +1739,7 @@ class Component extends DCLogic {
   get invoices(){
     return (this.state.data.invoices||[]).map(v=>({
       id:v.id,no:v.invoice_no||('INV-'+v.id),customer:v.customer_name||'Walk-in customer',branch:v.branch_name||'',
+      customerId:v.customer_id||null,branchId:v.branch_id||null,
       total:Number(v.total)||0,status:v.status||'draft',due:v.due_date||'',created:(v.created_at||'').slice(0,10),
       items:(v.items||[]).map(it=>({name:it.name,qty:Number(it.qty)||0,price:Number(it.price)||0})),
     }));
@@ -1813,25 +1846,66 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     }catch(e){this.toast('Could not record payment — '+e.message)}
   };
   renderInvoices(){
-    const I=this.icons,t=this.term;
+    const I=this.icons,t=this.term,s=this.state;
     const invs=this.invoices;
     if(!invs.length){
       return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
-        this.pageHead('Invoices','Create professional invoices — print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})]),
+        this.pageHead('Invoices','Create professional invoices — print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:()=>this.openInvBuilder()})]),
         this.card(this.h('div',{style:{padding:'64px 24px',textAlign:'center',color:'var(--muted)'}},
           this.h('div',{style:{fontSize:15,fontWeight:700,color:'var(--text2)',marginBottom:6}},'No invoices yet'),
           this.h('div',{style:{marginBottom:18}},'Create your first invoice, then print it or download it as PDF.'),
-          this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})),{padding:0}));
+          this.btn('New invoice',{icon:I.plus,onClick:()=>this.openInvBuilder()})),{padding:0}));
     }
-    const inv=invs.find(x=>x.id===this.state.selectedInvoiceId)||invs[0];
+
+    const q=(s.invoiceSearch||'').trim().toLowerCase();
+    const statusF=s.invoiceStatus||'all';
+    const filtered=invs.filter(v=>(statusF==='all'||v.status===statusF)&&(!q||v.no.toLowerCase().includes(q)||v.customer.toLowerCase().includes(q)));
+    const PAGE=10;
+    const pageCount=Math.max(1,Math.ceil(filtered.length/PAGE));
+    const page=Math.min(Math.max(1,s.invoicePage||1),pageCount);
+    const pageRows=filtered.slice((page-1)*PAGE,page*PAGE);
+    const statuses=['all','draft','sent','paid','overdue','cancelled'];
+    const count=k=>k==='all'?invs.length:invs.filter(v=>v.status===k).length;
+    const inv=invs.find(x=>x.id===s.selectedInvoiceId)||pageRows[0]||invs[0];
+    const iconBtn={width:28,height:28,borderRadius:7,border:'1px solid var(--border)',display:'inline-flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'var(--muted)'};
+
+    const cap0=k=>k.charAt(0).toUpperCase()+k.slice(1);
+    const rows=pageRows.length?pageRows.map(x=>{
+      const c=cap0(x.status),scc=this.statusColor(c);
+      return this.h('tr',{key:x.id,'data-hover':'',onClick:this.selectInvoice(x.id),style:{cursor:'pointer',background:x.id===(inv&&inv.id)?'color-mix(in srgb, #169B62 8%, transparent)':undefined}},
+        this.td(this.h('span',{style:{fontWeight:700}},x.no)),
+        this.td(x.customer),
+        this.td(x.branch||'—',{color:'var(--muted)'}),
+        this.td(x.created||'—',{color:'var(--muted)'}),
+        this.td(x.due||'—',{color:'var(--muted)'}),
+        this.td(this.bdt(x.total),{align:'right',mono:true,bold:true}),
+        this.td(this.badge(c,scc.c,scc.b)),
+        this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+          this.h('span',{title:'Edit',onClick:e=>{e.stopPropagation();this.openInvBuilder(x)},style:iconBtn,dangerouslySetInnerHTML:{__html:I.edit}}),
+          this.h('span',{title:'Download PDF',onClick:e=>{e.stopPropagation();this.downloadInvoicePdf(x)()},style:iconBtn,dangerouslySetInnerHTML:{__html:I.down}}),
+          this.h('span',{title:'Delete',onClick:this.askDeleteInvoice(x),style:{...iconBtn,color:'#dc2626'},dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'}));
+    }):[this.h('tr',{key:'e'},this.td(this.h('div',{style:{padding:'32px 0',textAlign:'center',color:'var(--muted)'}},(q||statusF!=='all')?'No invoices match your filters.':'No invoices yet.'),{}))];
+
+    const controls=this.h('div',{style:{display:'flex',gap:10,alignItems:'center',marginBottom:14,flexWrap:'wrap'}},
+      this.h('input',{value:s.invoiceSearch||'',onChange:e=>this.setState({invoiceSearch:e.target.value,invoicePage:1}),placeholder:'Search by number or customer…',style:{...this.inpStyle,maxWidth:280}}),
+      this.h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},statuses.map((k,i)=>{
+        const on=statusF===k;
+        return this.h('button',{key:i,onClick:()=>this.setState({invoiceStatus:k,invoicePage:1}),style:{padding:'8px 12px',borderRadius:9,fontSize:12.5,fontWeight:700,cursor:'pointer',border:'1px solid '+(on?'#169B62':'var(--border)'),background:on?'color-mix(in srgb, #169B62 16%, transparent)':'var(--surface)',color:on?'#0E5A3D':'var(--muted)'}},(k==='all'?'All':cap0(k))+' ('+count(k)+')');
+      })));
+
+    const pager=pageCount>1?this.h('div',{style:{display:'flex',justifyContent:'center',gap:6,marginTop:14}},
+      Array.from({length:pageCount},(_,i)=>i+1).map(n=>this.h('button',{key:n,onClick:()=>this.setState({invoicePage:n}),style:{minWidth:32,padding:'6px 10px',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',border:'1px solid '+(n===page?'#169B62':'var(--border)'),background:n===page?'color-mix(in srgb, #169B62 16%, transparent)':'var(--surface)',color:n===page?'#0E5A3D':'var(--text2)'}},String(n)))):null;
+
     const biz=(this.state.me&&this.state.me.business)||{};
     const sub=inv.items.reduce((a,r)=>a+r.qty*r.price,0);
-    const cap=inv.status.charAt(0).toUpperCase()+inv.status.slice(1);
+    const cap=cap0(inv.status);
     const sc=this.statusColor(cap);
-    const rowsMax=Math.min(invs.length,10);
     return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
-      this.pageHead('Invoices','Create professional invoices — print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})]),
-      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 340px',gap:20,alignItems:'start'}},
+      this.pageHead('Invoices','Every invoice — edit line items, customer, due date and status; print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:()=>this.openInvBuilder()})]),
+      controls,
+      this.table(['Invoice','Customer','Branch','Date','Due',{t:'Total',align:'right'},{t:'Status'},{t:'',align:'right'}],rows),
+      pager,
+      this.h('div',{style:{marginTop:24,display:'grid',gridTemplateColumns:'1fr 340px',gap:20,alignItems:'start'}},
         this.card([
           this.h('div',{key:'top',style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28}},
             this.h('div',null,this.h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},this.h('div',{style:{width:40,height:40,borderRadius:11,background:'linear-gradient(135deg,#169B62,#0d9488)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800}},(biz.name||t.biz).slice(0,2).toUpperCase()),this.h('span',{style:{fontSize:19,fontWeight:800}},biz.name||t.biz)),biz.address?this.h('div',{style:{fontSize:12.5,color:'var(--muted)',lineHeight:1.6,whiteSpace:'pre-line'}},biz.address):null),
@@ -1848,11 +1922,12 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.h('div',{key:'note',style:{marginTop:24,paddingTop:16,borderTop:'1px solid var(--surface-2)',fontSize:12.5,color:'var(--muted)',lineHeight:1.6}},'Thank you for your business.')
         ],{padding:32}),
         this.h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:12}},'Actions'),this.h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
-            this.btn('Download PDF',{icon:I.down,onClick:this.downloadInvoicePdf(inv)}),
+          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:12}},this.h('span',null,'Actions'),this.h('span',{style:{fontWeight:500,color:'var(--muted)'}},' · '+inv.no)),this.h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+            this.btn('Edit invoice',{icon:I.edit,onClick:()=>this.openInvBuilder(inv)}),
+            this.btn('Download PDF',{icon:I.down,variant:'ghost',onClick:this.downloadInvoicePdf(inv)}),
             this.btn('Print invoice',{icon:I.print,variant:'ghost',onClick:this.printInvoice(inv)}),
-            inv.status!=='paid'?this.btn('Record payment',{icon:I.money,variant:'soft',onClick:this.recordInvoicePayment(inv)}):this.h('div',{style:{fontSize:12.5,color:'#169B62',fontWeight:700,textAlign:'center',padding:'6px 0'}},'✓ Marked paid'))],{padding:18}),
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:8}},'All invoices'),this.h('div',null,invs.slice(0,10).map((x,i)=>this.h('div',{key:i,onClick:this.selectInvoice(x.id),'data-hover':'',style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 8px',borderBottom:i<rowsMax-1?'1px solid var(--border)':'none',cursor:'pointer',borderRadius:8,background:x.id===inv.id?'color-mix(in srgb, #169B62 12%, transparent)':'transparent'}},this.h('div',null,this.h('div',{style:{fontSize:13,fontWeight:700}},x.no),this.h('div',{style:{fontSize:11.5,color:'var(--muted)'}},x.customer)),this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:13,fontWeight:700}},this.bdt(x.total)),this.badge(x.status.charAt(0).toUpperCase()+x.status.slice(1),this.statusColor(x.status.charAt(0).toUpperCase()+x.status.slice(1)).c,this.statusColor(x.status.charAt(0).toUpperCase()+x.status.slice(1)).b)))))],{padding:18}))));
+            inv.status!=='paid'?this.btn('Record payment',{icon:I.money,variant:'soft',onClick:this.recordInvoicePayment(inv)}):this.h('div',{style:{fontSize:12.5,color:'#169B62',fontWeight:700,textAlign:'center',padding:'6px 0'}},'✓ Marked paid'),
+            this.btn('Delete invoice',{icon:I.trash,variant:'ghost',onClick:this.askDeleteInvoice(inv)}))],{padding:18}))));
   }
 
   // ============ PURCHASES ============
@@ -2169,12 +2244,18 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     const I=this.icons,b=this.state.invBuilder,prods=this.products;
     const sub=b.lines.reduce((a,l)=>a+l.qty*l.price,0),vat=Math.round(sub*0.05),tot=sub+vat;
     const inp={padding:'9px 11px',border:'1px solid var(--border)',borderRadius:9,fontSize:13.5,fontFamily:'inherit',width:'100%'};
+    const lbl={display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6};
     const body=this.h('div',null,
-      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
-        this.h('div',null,this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Bill to'),
-          this.h('select',{value:b.cust,onChange:this.invSetCust,style:{...inp,appearance:'none'}},this.h('option',{value:''},'Select customer…'),this.customers.map((c,i)=>this.h('option',{key:i,value:c.name},c.name)))),
-        this.h('div',null,this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Branch'),
+      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}},
+        this.h('div',null,this.h('label',{style:lbl},'Bill to'),
+          this.h('select',{value:b.cust,onChange:this.invSetCust,style:{...inp,appearance:'none'}},this.h('option',{value:''},'Walk-in customer'),this.customers.map((c,i)=>this.h('option',{key:i,value:c.name},c.name)))),
+        this.h('div',null,this.h('label',{style:lbl},'Branch'),
           this.h('select',{value:b.branch_id||'',onChange:this.invSetBranch,style:{...inp,appearance:'none'}},this.branches.map((br,i)=>this.h('option',{key:i,value:br.id},br.name))))),
+      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
+        this.h('div',null,this.h('label',{style:lbl},'Due date'),
+          this.h('input',{type:'date',value:b.due||'',onChange:this.invSetField('due'),style:inp})),
+        b.id?this.h('div',null,this.h('label',{style:lbl},'Status'),
+          this.h('select',{value:b.status||'sent',onChange:this.invSetField('status'),style:{...inp,appearance:'none'}},['draft','sent','paid','overdue','cancelled'].map((s,i)=>this.h('option',{key:i,value:s},s.charAt(0).toUpperCase()+s.slice(1))))):this.h('div',null)),
       this.h('div',{style:{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',marginBottom:14}},
         this.h('div',{style:{display:'grid',gridTemplateColumns:'2.4fr .7fr 1fr 1fr 34px',gap:8,padding:'10px 12px',background:'var(--surface-2)',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase'}},this.h('span',null,'Item'),this.h('span',null,'Qty'),this.h('span',null,'Price'),this.h('span',{style:{textAlign:'right'}},'Amount'),this.h('span',null,'')),
         b.lines.map((l,i)=>this.h('div',{key:i,style:{display:'grid',gridTemplateColumns:'2.4fr .7fr 1fr 1fr 34px',gap:8,padding:'8px 12px',borderTop:'1px solid var(--border)',alignItems:'center'}},
@@ -2188,7 +2269,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{display:'flex',justifyContent:'flex-end'}},this.h('div',{style:{width:240}},
         ...[['Subtotal',this.bdt(sub)],['VAT (5%)',this.bdt(vat)]].map((r,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,r[0]),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},r[1]))),
         this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'10px 0 2px',marginTop:4,borderTop:'2px solid #0f172a',fontSize:17,fontWeight:800}},this.h('span',null,'Total'),this.h('span',{style:{color:'#169B62'}},this.bdt(tot))))));
-    return this.modalShell('New invoice','Build a line-item invoice — totals update as you type.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeInvBuilder}),this.btn('Create invoice',{icon:I.check,onClick:this.invSave,loading:this.state.busy})],720);
+    return this.modalShell(b.id?('Edit invoice '+b.no):'New invoice','Build a line-item invoice — totals update as you type.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeInvBuilder}),this.btn(b.id?'Save changes':'Create invoice',{icon:I.check,onClick:this.invSave,loading:this.state.busy})],720);
   }
   renderBillingModal(){
     const I=this.icons;
@@ -2510,6 +2591,18 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.h('div',{style:{display:'flex',gap:10}},
           this.h('button',{onClick:()=>this.setState({delProdRun:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
           this.h('button',{onClick:this.confirmDeleteProdRun,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete draft'))));
+  }
+  renderDeleteInvoiceConfirm(){
+    const inv=this.state.delInvoice||{};
+    const I=this.icons;
+    return this.h('div',{key:'dic',onClick:()=>this.setState({delInvoice:null}),style:{position:'fixed',inset:0,zIndex:95,background:'rgba(15,23,42,.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:24,animation:'sfFade .18s ease both'}},
+      this.h('div',{onClick:e=>e.stopPropagation(),style:{width:'100%',maxWidth:420,background:'var(--surface)',borderRadius:18,padding:28,textAlign:'center',boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)',animation:'sfScale .2s ease both'}},
+        this.h('div',{style:{width:56,height:56,borderRadius:16,background:'color-mix(in srgb, #dc2626 16%, transparent)',color:'#dc2626',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'},dangerouslySetInnerHTML:{__html:I.trash}}),
+        this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete invoice?'),
+        this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},this.h('strong',null,inv.no||''),' and its line items will be permanently removed. This can’t be undone.'),
+        this.h('div',{style:{display:'flex',gap:10}},
+          this.h('button',{onClick:()=>this.setState({delInvoice:null}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),
+          this.h('button',{onClick:this.state.busy?null:this.confirmDeleteInvoice,disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.7:1}},this.state.busy?'Deleting…':'Delete invoice'))));
   }
   renderBulkDeleteConfirm(){
     const n=this.state.invSelected.length,t=this.term,I=this.icons;
@@ -2851,6 +2944,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.state.importConfirm&&this.renderImportConfirm(),
       this.state.billingModal&&this.renderBillingModal(),
       this.state.invBuilder&&this.renderInvBuilderModal(),
+      this.state.delInvoice&&this.renderDeleteInvoiceConfirm(),
       this.state.poBuilder&&this.renderPoBuilderModal(),
       this.state.recipeModal&&this.renderRecipeModal(),
       this.state.photoModal&&this.renderPhotoModal(),
