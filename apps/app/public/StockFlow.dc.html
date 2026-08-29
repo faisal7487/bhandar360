@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <x-dc>
@@ -379,6 +380,7 @@ class Component extends DCLogic {
     invSearch: '',
     prodConfirm: null,
     delProduct: null,
+    selectedInvoiceId: null,
     delTab: 'overview',
     selectedDelivery: null,
     createDelModal: false,
@@ -1390,32 +1392,155 @@ class Component extends DCLogic {
   }
 
   // ============ INVOICES ============
+  get invoices(){
+    return (this.state.data.invoices||[]).map(v=>({
+      id:v.id,no:v.invoice_no||('INV-'+v.id),customer:v.customer_name||'Walk-in customer',branch:v.branch_name||'',
+      total:Number(v.total)||0,status:v.status||'draft',due:v.due_date||'',created:(v.created_at||'').slice(0,10),
+      items:(v.items||[]).map(it=>({name:it.name,qty:Number(it.qty)||0,price:Number(it.price)||0})),
+    }));
+  }
+  selectInvoice=(id)=>()=>this.setState({selectedInvoiceId:id});
+  esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+  money(n){n=Number(n)||0;return '৳'+((n>0&&n<10)?n.toFixed(2):Math.round(n).toLocaleString('en-IN'))}
+  invoiceDocHtml(inv){
+    const biz=(this.state.me&&this.state.me.business)||{};
+    const sub=inv.items.reduce((a,r)=>a+r.qty*r.price,0);
+    const rows=inv.items.map(it=>`<tr><td>${this.esc(it.name)}</td><td class="r">${it.qty}</td><td class="r">${this.money(it.price)}</td><td class="r">${this.money(it.qty*it.price)}</td></tr>`).join('')||'<tr><td colspan="4" style="color:#9ca3af">No line items</td></tr>';
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${this.esc(inv.no)}</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1f2937;padding:44px;max-width:820px;margin:0 auto}
+.head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px}
+.biz{font-size:20px;font-weight:800}
+.muted{color:#6b7280;font-size:12.5px;white-space:pre-line;line-height:1.6}
+h1{font-size:26px;color:#169B62;letter-spacing:-.01em;margin-bottom:4px}
+.meta{text-align:right;font-size:12.5px;color:#6b7280}
+.bill{display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;padding:16px 0;margin-bottom:22px}
+.lbl{font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding:9px 6px}
+th.r,td.r{text-align:right}
+td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
+.tot{margin-left:auto;width:280px}
+.tot .row{display:flex;justify-content:space-between;padding:6px 0;color:#6b7280;font-size:13px}
+.tot .grand{border-top:2px solid #0f172a;font-size:18px;font-weight:800;color:#1f2937;padding-top:11px;margin-top:4px}
+.tot .grand b{color:#169B62;font-weight:800}
+.status{display:inline-block;padding:3px 11px;border-radius:20px;background:#f1f3f5;font-size:12px;font-weight:700;text-transform:capitalize}
+.note{margin-top:30px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px}
+@media print{body{padding:8px}}
+</style></head><body>
+<div class="head">
+<div><div class="biz">${this.esc(biz.name||'Your Business')}</div><div class="muted">${this.esc(biz.address||'')}</div></div>
+<div class="meta"><h1>INVOICE</h1><div>${this.esc(inv.no)}</div><div>Date: ${this.esc(inv.created||'—')}</div>${inv.due?`<div>Due: ${this.esc(inv.due)}</div>`:''}</div>
+</div>
+<div class="bill">
+<div><div class="lbl">Bill to</div><div style="font-weight:700;font-size:14.5px">${this.esc(inv.customer)}</div>${inv.branch?`<div class="muted">${this.esc(inv.branch)}</div>`:''}</div>
+<div style="text-align:right"><div class="lbl">Status</div><span class="status">${this.esc(inv.status)}</span></div>
+</div>
+<table><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="tot">
+<div class="row"><span>Subtotal</span><span>${this.money(sub)}</span></div>
+<div class="row grand"><span>Total due</span><b>${this.money(inv.total||sub)}</b></div>
+</div>
+<div class="note">Thank you for your business. · ${this.esc(inv.no)}</div>
+</body></html>`;
+  }
+  printInvoice=(inv)=>()=>{
+    if(!inv){this.toast('No invoice to print');return}
+    const w=window.open('','_blank','width=840,height=920');
+    if(!w){this.toast('Allow pop-ups for this site to print the invoice');return}
+    w.document.write(this.invoiceDocHtml(inv));
+    w.document.close();w.focus();
+    setTimeout(()=>{try{w.print()}catch(e){}},350);
+  };
+  downloadInvoicePdf=(inv)=>()=>{
+    if(!inv){this.toast('No invoice to download');return}
+    const JS=window.jspdf&&window.jspdf.jsPDF;
+    if(!JS){this.printInvoice(inv)();this.toast('PDF library unavailable — use “Save as PDF” in the print dialog');return}
+    try{
+      const biz=(this.state.me&&this.state.me.business)||{};
+      const doc=new JS({unit:'pt',format:'a4'});const L=48,R=548;let y=62;
+      doc.setFont('helvetica','bold');doc.setFontSize(20);doc.text(String(biz.name||'Your Business'),L,y);
+      doc.setTextColor(22,155,98);doc.setFontSize(22);doc.text('INVOICE',R,y,{align:'right'});
+      doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(107,114,128);y+=16;
+      if(biz.address)doc.text(String(biz.address).split('\n').slice(0,3),L,y);
+      doc.text(String(inv.no),R,y,{align:'right'});y+=13;
+      doc.text('Date: '+(inv.created||'—'),R,y,{align:'right'});
+      if(inv.due){y+=13;doc.text('Due: '+inv.due,R,y,{align:'right'});}
+      y+=30;doc.setTextColor(31,41,55);doc.setFont('helvetica','bold');doc.text('Bill to',L,y);
+      doc.setFont('helvetica','normal');y+=14;doc.text(String(inv.customer||'Walk-in customer'),L,y);
+      doc.setFont('helvetica','bold');doc.text('Status: '+inv.status,R,y,{align:'right'});doc.setFont('helvetica','normal');
+      if(inv.branch){y+=13;doc.setTextColor(107,114,128);doc.text(String(inv.branch),L,y);doc.setTextColor(31,41,55);}
+      y+=24;doc.setDrawColor(226,232,240);doc.line(L,y,R,y);y+=16;
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(107,114,128);
+      doc.text('DESCRIPTION',L,y);doc.text('QTY',350,y,{align:'right'});doc.text('UNIT PRICE',450,y,{align:'right'});doc.text('AMOUNT',R,y,{align:'right'});
+      y+=7;doc.line(L,y,R,y);y+=16;
+      doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(31,41,55);
+      let sub=0;
+      (inv.items.length?inv.items:[{name:'No line items',qty:0,price:0}]).forEach(it=>{
+        const amt=(Number(it.qty)||0)*(Number(it.price)||0);sub+=amt;
+        doc.text(String(it.name||'').slice(0,52),L,y);
+        doc.text(String(it.qty),350,y,{align:'right'});
+        doc.text(this.money(it.price),450,y,{align:'right'});
+        doc.text(this.money(amt),R,y,{align:'right'});
+        y+=8;doc.setDrawColor(241,243,245);doc.line(L,y,R,y);y+=15;
+        if(y>770){doc.addPage();y=62;}
+      });
+      y+=12;doc.setTextColor(107,114,128);doc.text('Subtotal',450,y,{align:'right'});doc.text(this.money(sub),R,y,{align:'right'});
+      y+=20;doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(31,41,55);doc.text('Total due',450,y,{align:'right'});
+      doc.setTextColor(22,155,98);doc.text(this.money(inv.total||sub),R,y,{align:'right'});
+      doc.save('Invoice-'+String(inv.no).replace(/[^A-Za-z0-9_-]/g,'')+'.pdf');
+      this.toast('Invoice PDF downloaded');
+    }catch(e){this.printInvoice(inv)();this.toast('Could not build PDF — opened print view instead')}
+  };
+  recordInvoicePayment=(inv)=>async()=>{
+    if(!inv)return;
+    try{
+      await this.api('/api/invoices/'+inv.id,{method:'PUT',body:{status:'paid'}});
+      await this.refresh('invoices','/api/invoices');
+      this.toast('Payment recorded — invoice marked paid');
+    }catch(e){this.toast('Could not record payment — '+e.message)}
+  };
   renderInvoices(){
     const I=this.icons,t=this.term;
-    const items=[['Napa Extra 500mg (Beximco)',20,2.5],['Maxpro 40mg',15,10],['Insulin Novomix 30',2,640],['Vitamin C 250mg',30,1.5]];
-    const sub=items.reduce((a,r)=>a+r[1]*r[2],0),vat=Math.round(sub*0.05),tot=sub+vat;
+    const invs=this.invoices;
+    if(!invs.length){
+      return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
+        this.pageHead('Invoices','Create professional invoices — print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})]),
+        this.card(this.h('div',{style:{padding:'64px 24px',textAlign:'center',color:'var(--muted)'}},
+          this.h('div',{style:{fontSize:15,fontWeight:700,color:'var(--text2)',marginBottom:6}},'No invoices yet'),
+          this.h('div',{style:{marginBottom:18}},'Create your first invoice, then print it or download it as PDF.'),
+          this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})),{padding:0}));
+    }
+    const inv=invs.find(x=>x.id===this.state.selectedInvoiceId)||invs[0];
+    const biz=(this.state.me&&this.state.me.business)||{};
+    const sub=inv.items.reduce((a,r)=>a+r.qty*r.price,0);
+    const cap=inv.status.charAt(0).toUpperCase()+inv.status.slice(1);
+    const sc=this.statusColor(cap);
+    const rowsMax=Math.min(invs.length,10);
     return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
-      this.pageHead('Invoices','Create professional invoices — print or export to PDF.',[this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})]),
+      this.pageHead('Invoices','Create professional invoices — print or download as PDF.',[this.btn('New invoice',{icon:I.plus,onClick:this.openInvBuilder})]),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 340px',gap:20,alignItems:'start'}},
-        // invoice document
         this.card([
           this.h('div',{key:'top',style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28}},
-            this.h('div',null,this.h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},this.h('div',{style:{width:40,height:40,borderRadius:11,background:'linear-gradient(135deg,#169B62,#0d9488)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800}},t.initial),this.h('span',{style:{fontSize:19,fontWeight:800}},t.biz)),this.h('div',{style:{fontSize:12.5,color:'var(--muted)',lineHeight:1.6}},'123 Green Road, Dhaka 1205\nBIN: 004521789 · +880 1711-223344')),
-            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:24,fontWeight:800,color:'#169B62',letterSpacing:'-.01em'}},'INVOICE'),this.h('div',{style:{fontSize:13,color:'var(--muted)',marginTop:4}},'INV-2042'),this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Date: 20 Aug 2026'),this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Due: 03 Sep 2026'))),
+            this.h('div',null,this.h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},this.h('div',{style:{width:40,height:40,borderRadius:11,background:'linear-gradient(135deg,#169B62,#0d9488)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800}},(biz.name||t.biz).slice(0,2).toUpperCase()),this.h('span',{style:{fontSize:19,fontWeight:800}},biz.name||t.biz)),biz.address?this.h('div',{style:{fontSize:12.5,color:'var(--muted)',lineHeight:1.6,whiteSpace:'pre-line'}},biz.address):null),
+            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:24,fontWeight:800,color:'#169B62',letterSpacing:'-.01em'}},'INVOICE'),this.h('div',{style:{fontSize:13,color:'var(--muted)',marginTop:4}},inv.no),this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Date: '+(inv.created||'—')),inv.due?this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Due: '+inv.due):null)),
           this.h('div',{key:'bill',style:{display:'flex',justifyContent:'space-between',padding:'16px 0',borderTop:'1px solid var(--surface-2)',borderBottom:'1px solid var(--surface-2)',marginBottom:20}},
-            this.h('div',null,this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Bill to'),this.h('div',{style:{fontWeight:700,fontSize:14.5}},'Sunrise Clinic'),this.h('div',{style:{fontSize:13,color:'var(--muted)'}},'Dhanmondi 27, Dhaka · 01811-445566')),
-            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Status'),this.badge('Unpaid','var(--muted)','var(--surface-2)'))),
+            this.h('div',null,this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Bill to'),this.h('div',{style:{fontWeight:700,fontSize:14.5}},inv.customer),inv.branch?this.h('div',{style:{fontSize:13,color:'var(--muted)'}},inv.branch):null),
+            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Status'),this.badge(cap,sc.c,sc.b))),
           this.h('table',{key:'tb',style:{width:'100%',borderCollapse:'collapse',marginBottom:18}},
             this.h('thead',null,this.h('tr',null,this.th('Description'),this.th('Qty','right'),this.th('Unit price','right'),this.th('Amount','right'))),
-            this.h('tbody',null,items.map((r,i)=>this.h('tr',{key:i},this.td(r[0],{bold:true}),this.td(r[1],{align:'right',mono:true}),this.td(this.bdt(r[2]),{align:'right',mono:true}),this.td(this.bdt(r[1]*r[2]),{align:'right',bold:true,mono:true}))))),
+            this.h('tbody',null,inv.items.length?inv.items.map((r,i)=>this.h('tr',{key:i},this.td(r.name,{bold:true}),this.td(r.qty,{align:'right',mono:true}),this.td(this.bdt(r.price),{align:'right',mono:true}),this.td(this.bdt(r.qty*r.price),{align:'right',bold:true,mono:true}))):this.h('tr',null,this.td('No line items on this invoice',{color:'var(--muted)'})))),
           this.h('div',{key:'tot',style:{display:'flex',justifyContent:'flex-end'}},this.h('div',{style:{width:260}},
-            ...[['Subtotal',this.bdt(sub)],['VAT (5%)',this.bdt(vat)]].map((r,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,r[0]),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},r[1]))),
-            this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'12px 0',marginTop:6,borderTop:'2px solid #0f172a',fontSize:18,fontWeight:800}},this.h('span',null,'Total due'),this.h('span',{style:{color:'#169B62'}},this.bdt(tot))))),
-          this.h('div',{key:'note',style:{marginTop:24,paddingTop:16,borderTop:'1px solid var(--surface-2)',fontSize:12.5,color:'var(--muted)',lineHeight:1.6}},'Payment terms: Net 14 days. Please make bank transfer to City Bank A/C 1402-XXXX. Thank you for your business.')
+            this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,'Subtotal'),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},this.bdt(sub))),
+            this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'12px 0',marginTop:6,borderTop:'2px solid #0f172a',fontSize:18,fontWeight:800}},this.h('span',null,'Total due'),this.h('span',{style:{color:'#169B62'}},this.bdt(inv.total||sub))))),
+          this.h('div',{key:'note',style:{marginTop:24,paddingTop:16,borderTop:'1px solid var(--surface-2)',fontSize:12.5,color:'var(--muted)',lineHeight:1.6}},'Thank you for your business.')
         ],{padding:32}),
         this.h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:12}},'Actions'),this.h('div',{style:{display:'flex',flexDirection:'column',gap:8}},this.btn('Download PDF',{icon:I.down,onClick:()=>this.toast('Invoice PDF downloaded')}),this.btn('Print invoice',{icon:I.print,variant:'ghost',onClick:()=>this.toast('Sent to printer')}),this.btn('Record payment',{icon:I.money,variant:'soft',onClick:()=>this.toast('Payment recorded')}))],{padding:18}),
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:8}},'Recent invoices'),this.h('div',null,this.sales.slice(0,5).map((s,i)=>this.h('div',{key:i,'data-hover':'',style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 6px',borderBottom:i<4?'1px solid var(--border)':'none',cursor:'pointer',borderRadius:8}},this.h('div',null,this.h('div',{style:{fontSize:13,fontWeight:700}},s.id),this.h('div',{style:{fontSize:11.5,color:'var(--muted)'}},s.cust)),this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:13,fontWeight:700}},this.bdt(s.total)),this.badge(s.status,this.statusColor(s.status).c,this.statusColor(s.status).b)))))],{padding:18}))));
+          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:12}},'Actions'),this.h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+            this.btn('Download PDF',{icon:I.down,onClick:this.downloadInvoicePdf(inv)}),
+            this.btn('Print invoice',{icon:I.print,variant:'ghost',onClick:this.printInvoice(inv)}),
+            inv.status!=='paid'?this.btn('Record payment',{icon:I.money,variant:'soft',onClick:this.recordInvoicePayment(inv)}):this.h('div',{style:{fontSize:12.5,color:'#169B62',fontWeight:700,textAlign:'center',padding:'6px 0'}},'✓ Marked paid'))],{padding:18}),
+          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:8}},'All invoices'),this.h('div',null,invs.slice(0,10).map((x,i)=>this.h('div',{key:i,onClick:this.selectInvoice(x.id),'data-hover':'',style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 8px',borderBottom:i<rowsMax-1?'1px solid var(--border)':'none',cursor:'pointer',borderRadius:8,background:x.id===inv.id?'color-mix(in srgb, #169B62 12%, transparent)':'transparent'}},this.h('div',null,this.h('div',{style:{fontSize:13,fontWeight:700}},x.no),this.h('div',{style:{fontSize:11.5,color:'var(--muted)'}},x.customer)),this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:13,fontWeight:700}},this.bdt(x.total)),this.badge(x.status.charAt(0).toUpperCase()+x.status.slice(1),this.statusColor(x.status.charAt(0).toUpperCase()+x.status.slice(1)).c,this.statusColor(x.status.charAt(0).toUpperCase()+x.status.slice(1)).b)))))],{padding:18}))));
   }
 
   // ============ PURCHASES ============
