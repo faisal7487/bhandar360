@@ -467,11 +467,14 @@ class Component extends DCLogic {
   };
   receivePO=(poId)=>async(e)=>{
     if(e&&e.stopPropagation)e.stopPropagation();
+    if(this.state.receivingPO)return;
+    this.setState({receivingPO:poId});
     try{
       await this.api('/api/purchase-orders/'+poId,{method:'PUT',body:{status:'received'}});
       await Promise.all([this.refresh('purchaseOrders','/api/purchase-orders'),this.refresh('products','/api/products')]);
       this.toast('Goods received — stock updated');
     }catch(err){this.toast('Could not receive order — '+err.message)}
+    finally{this.setState({receivingPO:null})}
   };
   openReturn=()=>this.setState({returnModal:true,quickAddOpen:false});
   saveReturn=()=>{this.setState({returnModal:null});this.toast('Purchase return recorded — supplier balance adjusted')};
@@ -1231,14 +1234,14 @@ class Component extends DCLogic {
       this.h('h1',{style:{fontSize:26,fontWeight:800,letterSpacing:'-.02em'}},title),
       sub&&this.h('p',{style:{color:'var(--muted)',fontSize:14,marginTop:4}},sub)),
     actions&&this.h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},actions))}
-  btn(label,{icon,variant='primary',onClick,size='md',disabled,loading}={}){
+  btn(label,{icon,variant='primary',onClick,size='md',disabled,loading,loadingLabel}={}){
     disabled=disabled||loading;
     const styles={primary:{background:'#169B62',color:'#fff',border:'none',boxShadow:'0 6px 14px -6px rgba(22,155,98,.42)'},ghost:{background:'var(--surface)',color:'var(--text2)',border:'1px solid var(--border)'},danger:{background:'#dc2626',color:'#fff',border:'none'},soft:{background:'color-mix(in srgb, #169B62 16%, transparent)',color:'var(--accent-text)',border:'1px solid color-mix(in srgb, #169B62 32%, transparent)'}}[variant];
     return this.h('button',{onClick:disabled?null:onClick,disabled,style:{display:'inline-flex',alignItems:'center',gap:7,padding:size==='sm'?'7px 12px':'10px 16px',borderRadius:10,fontWeight:700,fontSize:size==='sm'?12.5:13.5,cursor:disabled?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:disabled?.6:1,...styles}},
       loading
         ?this.h('span',{style:{width:15,height:15,display:'inline-block',border:'2px solid currentColor',borderRightColor:'transparent',borderRadius:'50%',animation:'sfSpin .6s linear infinite'}})
         :(icon&&this.h('span',{style:{width:16,height:16,display:'flex'},dangerouslySetInnerHTML:{__html:icon}})),
-      loading?'Processing…':label)}
+      loading?(loadingLabel||'Processing…'):label)}
   badge(text,color,bg){return this.h('span',{style:{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:20,fontSize:12,fontWeight:700,color,background:'color-mix(in srgb, '+color+' 16%, transparent)',whiteSpace:'nowrap'}},text)}
   kpi({label,value,sub,subColor,icon,iconBg,iconColor,accent}){
     return this.card([
@@ -1712,7 +1715,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       pos.length?this.table(['PO number','Supplier','Items','Date','Total',{t:'Status'},{t:'',align:'right'}],
         pos.map((p,i)=>this.h('tr',{key:p._id||i,'data-hover':'',style:{}},
           this.td(this.h('span',{style:{fontWeight:700}},p.id)),this.td(p.supplier),this.td(p.items+' items'),this.td(p.date,{color:'var(--muted)'}),this.td(this.bdt(p.total),{mono:true,bold:true}),this.td(this.badge(p.status,this.statusColor(p.status).c,this.statusColor(p.status).b)),
-          this.td(p.status!=='Received'&&p.status!=='Cancelled'?this.btn('Receive',{variant:'soft',size:'sm',onClick:this.receivePO(p._id)}):this.h('span',{style:{fontSize:12.5,color:'var(--muted)'}},p.status),{align:'right'}))))
+          this.td(p.status!=='Received'&&p.status!=='Cancelled'?this.btn('Receive',{variant:'soft',size:'sm',onClick:this.receivePO(p._id),loading:this.state.receivingPO===p._id,loadingLabel:'Receiving…',disabled:!!this.state.receivingPO}):this.h('span',{style:{fontSize:12.5,color:'var(--muted)'}},p.status),{align:'right'}))))
         :this.card(this.h('div',{style:{padding:'56px 24px',textAlign:'center',color:'var(--muted)'}},
           this.h('div',{style:{fontSize:15,fontWeight:700,color:'var(--text2)',marginBottom:6}},'No purchase orders yet'),
           this.h('div',{style:{marginBottom:16}},'Create a purchase order to track incoming stock.'),
