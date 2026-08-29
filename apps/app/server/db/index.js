@@ -13,15 +13,17 @@ types.setTypeParser(20, (val) => parseInt(val, 10));
 
 const ssl = process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false };
 
-// Supabase's session pooler on the free/Nano tier caps total connections very
-// low (≈15), shared across every serverless instance. The default node-postgres
-// pool (max 10) means two warm instances alone can exhaust it, and the client's
-// dashboard/inventory load fires ~14 requests at once — several would come back
-// as "max clients reached" 500s, blanking the whole UI. Keep the per-instance
-// pool small so requests queue on a free client instead of erroring, and let
-// idle clients drop quickly so instances don't hoard connections while frozen.
+// Supabase's pooler on the free/Nano tier caps total connections very low
+// (≈15), shared across every serverless instance. Point PGPORT at the
+// TRANSACTION pooler (6543), not the session pooler (5432): transaction mode
+// only binds a real Postgres connection for the duration of each
+// query/transaction, so many frozen Vercel instances share the budget instead
+// of each hoarding a handful. This app is transaction-mode safe — no LISTEN,
+// no session GUCs, and `SELECT ... FOR UPDATE` only runs inside the explicit
+// BEGIN/COMMIT of transaction(). Still keep the per-instance pool small and
+// let idle clients drop fast.
 const poolTuning = {
-  max: Number(process.env.PGPOOLMAX || 4),
+  max: Number(process.env.PGPOOLMAX || 3),
   idleTimeoutMillis: Number(process.env.PGPOOLIDLE || 10000),
   connectionTimeoutMillis: Number(process.env.PGPOOLTIMEOUT || 10000),
 };
@@ -102,7 +104,21 @@ function transaction(fn) {
 
 async function migrate() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  await pool.query(schema);
+  // schema.sql is fully idempotent; retry a few times so a transient
+  // "max clients reached" from the shared pooler on a cold-start burst
+  // doesn't fail the run.
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await pool.query(schema);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (err.code !== 'XX000' && err.code !== '53300' && err.code !== '08006') throw err;
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 module.exports = { prepare, transaction, query, migrate, pool };

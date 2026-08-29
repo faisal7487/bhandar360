@@ -9,15 +9,22 @@ const db = require('../server/db');
 
 // Migrations are idempotent (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT
 // EXISTS), but there's no reason to re-run them on every invocation — cache
-// the promise for the lifetime of this warm function instance.
+// the result for the lifetime of this warm function instance.
+//
+// A migrate failure must NOT take the site down: the schema already exists in
+// production, so if a cold-start burst can't get a pooler connection to run
+// the (no-op) migration, log it and serve the request anyway. Set
+// RUN_MIGRATIONS=false to skip the attempt entirely once the schema is stable.
 let migrated = null;
 
 module.exports = async (req, res) => {
   if (!migrated) {
-    migrated = db.migrate().catch((err) => {
-      migrated = null; // let the next request retry instead of caching a failure forever
-      throw err;
-    });
+    migrated =
+      process.env.RUN_MIGRATIONS === 'false'
+        ? Promise.resolve()
+        : db.migrate().catch((err) => {
+            console.error('migrate skipped (schema assumed present):', err.message);
+          });
   }
   await migrated;
   return app(req, res);
