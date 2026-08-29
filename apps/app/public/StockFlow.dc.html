@@ -415,6 +415,7 @@ class Component extends DCLogic {
     delSupConfirm: '',
     bulkDelSup: false,
     bulkDelSupConfirm: '',
+    supPay: null,
     customerModal: false,
     customerForm: null,
     expenseModal: false,
@@ -769,7 +770,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',supPay:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     if(this.state.busy)return;
     const f=this.state.productForm||{};
@@ -971,6 +972,22 @@ class Component extends DCLogic {
     await this.refresh('suppliers','/api/suppliers');
     this.setState({bulkDelSup:false,bulkDelSupConfirm:'',supSel:[]});
     this.toast(ok+' suppliers deleted'+(fail?' · '+fail+' failed':''));
+  };
+  openSupPay=(s)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({supPay:{id:s._id,name:s.name,due:s.due||0,amount:s.due?String(s.due):''}});};
+  setSupPayAmount=(e)=>this.setState(st=>({supPay:{...st.supPay,amount:e.target.value}}));
+  confirmSupPay=async()=>{
+    if(this.state.busy)return;
+    const p=this.state.supPay;if(!p)return;
+    const amt=parseFloat(p.amount)||0;
+    if(amt<=0){this.toast('Enter a payment amount greater than 0');return}
+    this.setState({busy:true});
+    try{
+      await this.api('/api/suppliers/'+p.id+'/pay',{method:'POST',body:{amount:amt}});
+      await Promise.all([this.refresh('suppliers','/api/suppliers'),this.refresh('expenses','/api/expenses')]);
+      this.setState({supPay:null});
+      this.toast(this.bdt(amt)+' paid to '+p.name);
+    }catch(e){this.toast('Could not record payment — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openCustomerModal=()=>this.setState({customerModal:true,customerForm:{name:'',contact:'',phone:'',email:'',credit_limit:''}});
   setCustomerField=(k)=>(e)=>this.setState(s=>({customerForm:{...s.customerForm,[k]:e.target.value}}));
@@ -1825,6 +1842,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.td(this.bdt(s.balance),{mono:true}),
           this.td(s.due>0?this.badge(this.bdt(s.due)+' due','#d97706','#fffbeb'):this.badge('Settled','#169B62','#e7f6ef')),
           this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+            s.due>0?this.btn('Pay',{icon:I.money,variant:'soft',size:'sm',onClick:this.openSupPay(s)}):null,
             this.h('span',{title:'Edit',onClick:this.editSupplier(s),style:iconBtn('var(--muted)'),dangerouslySetInnerHTML:{__html:I.edit}}),
             this.h('span',{title:'Delete',onClick:this.askDeleteSupplier(s),style:iconBtn('#dc2626'),dangerouslySetInnerHTML:{__html:I.trash}})),{align:'right'})))));
   }
@@ -2175,6 +2193,23 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     return this.modalShell('Delete '+n+' supplier'+(n===1?'':'s'),'This action is permanent and cannot be undone.',body,
       [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkDelSup:false,bulkDelSupConfirm:''})}),
        this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,onClick:this.confirmBulkDeleteSuppliers})],520);
+  }
+  renderSupPayModal(){
+    const p=this.state.supPay||{};
+    const amt=parseFloat(p.amount)||0;
+    const remaining=Math.max(0,(p.due||0)-amt);
+    const body=this.h('div',null,
+      this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'12px 14px',marginBottom:16,borderRadius:10,background:'var(--surface-2)',fontSize:13.5}},
+        this.h('span',{style:{color:'var(--muted)'}},'Outstanding to '+(p.name||'supplier')),
+        this.h('span',{style:{fontWeight:800}},this.bdt(p.due||0))),
+      this.field('Payment amount',{value:p.amount,onChange:this.setSupPayAmount,ph:'0',req:true}),
+      this.h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:14,paddingTop:12,borderTop:'1px dashed var(--border)',fontSize:14,fontWeight:700}},
+        this.h('span',null,'Remaining after payment'),
+        this.h('span',{style:{color:remaining>0?'#d97706':'#169B62'}},this.bdt(remaining))),
+      this.h('div',{style:{fontSize:12,color:'var(--muted)',marginTop:8}},'Reduces the outstanding balance and logs the payment under Expenses.'));
+    return this.modalShell('Record supplier payment','Pay down what you owe '+(p.name||'this supplier')+'.',body,
+      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({supPay:null})}),
+       this.btn('Pay '+this.bdt(amt||0),{icon:this.icons.check,onClick:this.confirmSupPay,disabled:amt<=0,loading:this.state.busy,loadingLabel:'Recording…'})],480);
   }
   renderCustomerModal(){
     const f=this.state.customerForm||{};
@@ -2615,6 +2650,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.state.supplierModal&&this.renderSupplierModal(),
       this.state.delSup&&this.renderDeleteSupplierConfirm(),
       this.state.bulkDelSup&&this.renderBulkDeleteSupConfirm(),
+      this.state.supPay&&this.renderSupPayModal(),
       this.state.customerModal&&this.renderCustomerModal(),
       this.state.expenseModal&&this.renderExpenseModal(),
       this.state.teamModal&&this.renderTeamModal(),
