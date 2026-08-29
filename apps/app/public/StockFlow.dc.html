@@ -31,6 +31,8 @@
   @keyframes sfScale{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
   @keyframes sfBar{from{transform:scaleY(0)}to{transform:scaleY(1)}}
   @keyframes sfToast{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @keyframes sfSpin{to{transform:rotate(360deg)}}
+  @keyframes sfProg{0%{left:-45%}55%{left:55%}100%{left:110%}}
   .sf-view{animation:sfIn .3s ease both}
   [data-hover]:hover{background:var(--surface-2)!important}
   [data-nav]:hover{background:var(--surface-2)!important}
@@ -443,16 +445,19 @@ class Component extends DCLogic {
   poAddLine=()=>this.setState(s=>({poBuilder:{...s.poBuilder,lines:[...s.poBuilder.lines,{name:'',qty:1,cost:0}]}}));
   poRemoveLine=(i)=>this.setState(s=>({poBuilder:{...s.poBuilder,lines:s.poBuilder.lines.filter((_,j)=>j!==i)}}));
   poSave=async()=>{
+    if(this.state.busy)return;
     const b=this.state.poBuilder;
     const sup=this.suppliers.find(s=>s.name===b.supplier);
     const lines=b.lines.filter(l=>l.name);
     if(!lines.length){this.toast('Add at least one line item');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/purchase-orders',{method:'POST',body:{supplier_id:sup&&sup._id,lines}});
       await this.refresh('purchaseOrders','/api/purchase-orders');
       this.setState({poBuilder:null});
       this.toast('Purchase order created');
     }catch(e){this.toast('Could not create purchase order — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   receivePO=(poId)=>async(e)=>{
     if(e&&e.stopPropagation)e.stopPropagation();
@@ -470,11 +475,16 @@ class Component extends DCLogic {
 
   // ---------- backend API ----------
   async api(path,opts={}){
-    const res=await fetch(path,{method:opts.method||'GET',credentials:'include',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined});
-    let body=null;
-    try{body=await res.json()}catch(e){}
-    if(!res.ok)throw new Error((body&&body.error)||'Request failed');
-    return body;
+    this.setState(s=>({pending:(s.pending||0)+1}));
+    try{
+      const res=await fetch(path,{method:opts.method||'GET',credentials:'include',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined});
+      let body=null;
+      try{body=await res.json()}catch(e){}
+      if(!res.ok)throw new Error((body&&body.error)||'Request failed');
+      return body;
+    }finally{
+      this.setState(s=>({pending:Math.max(0,(s.pending||0)-1)}));
+    }
   }
   async boot(){
     try{
@@ -529,16 +539,19 @@ class Component extends DCLogic {
   invAddLine=()=>this.setState(s=>({invBuilder:{...s.invBuilder,lines:[...s.invBuilder.lines,{name:'',qty:1,price:0}]}}));
   invRemoveLine=(i)=>this.setState(s=>({invBuilder:{...s.invBuilder,lines:s.invBuilder.lines.filter((_,j)=>j!==i)}}));
   invSave=async()=>{
+    if(this.state.busy)return;
     const b=this.state.invBuilder;
     const cust=this.customers.find(c=>c.name===b.cust);
     const lines=b.lines.filter(l=>l.name);
     if(!lines.length){this.toast('Add at least one line item');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/invoices',{method:'POST',body:{customer_id:cust&&cust._id,branch_id:b.branch_id||null,lines}});
       await this.refresh('invoices','/api/invoices');
       this.setState({invBuilder:null});
       this.toast('Invoice created');
     }catch(e){this.toast('Could not create invoice — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   tr=(en,bn)=>this.state.lang==='bn'?bn:en;
   toggleLang=(l)=>()=>this.setState({lang:l});
@@ -748,9 +761,11 @@ class Component extends DCLogic {
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
   closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
+    if(this.state.busy)return;
     const f=this.state.productForm||{};
     const wh=this.warehouses.find(w=>w.name===f.warehouse);
     const payload={name:f.name,generic:f.generic,brand:f.brand,mfr:f.mfr,form:f.form,strength:f.strength,category:f.cat,warehouse_id:wh?wh.id:null,sku:f.sku,unit:f.unit,cost_price:parseFloat(f.cost)||0,sale_price:parseFloat(f.sell)||0,stock_qty:parseFloat(f.stock)||0,reorder_level:parseFloat(f.min)||0,batch_no:f.batch,mfg_date:f.mfg,expiry_date:f.exp,supplier:f.supplier};
+    this.setState({busy:true});
     try{
       if(f.id)await this.api('/api/products/'+f.id,{method:'PUT',body:payload});
       else await this.api('/api/products',{method:'POST',body:payload});
@@ -758,6 +773,7 @@ class Component extends DCLogic {
       this.setState({productModal:null,productForm:null});
       this.toast(this.term.item+' saved successfully');
     }catch(e){this.toast('Could not save item — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   askDeleteProduct=(p)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delProduct:p,quickAddOpen:false});};
   confirmDeleteProduct=async()=>{
@@ -1021,16 +1037,19 @@ class Component extends DCLogic {
   cartQty=(id,d)=>()=>this.setState(s=>({cart:s.cart.map(c=>c.id===id?{...c,qty:Math.max(0,c.qty+d)}:c).filter(c=>c.qty>0)}));
   clearCart=()=>this.setState({cart:[]});
   completeSale=async()=>{
+    if(this.state.busy)return;
     const cart=this.state.cart;
     const n=cart.length;
     const lines=cart.map(c=>({product_id:c.id,name:c.name,qty:c.qty,price:c.sell}));
     const branchId=this.state.posBranch||(this.branches[0]&&this.branches[0].id);
+    this.setState({busy:true});
     try{
       await this.api('/api/sales',{method:'POST',body:{lines,method:this.state.posPay||'Cash',branch_id:branchId}});
       await Promise.all([this.refresh('sales','/api/sales'),this.refresh('products','/api/products')]);
       this.setState({cart:[]});
       this.toast('Sale completed \u2014 '+n+' item(s), stock updated');
     }catch(e){this.toast('Could not complete sale \u2014 '+e.message)}
+    finally{this.setState({busy:false})}
   };
   runProduction=async()=>{
     const p=this.products[0];
@@ -1174,10 +1193,14 @@ class Component extends DCLogic {
       this.h('h1',{style:{fontSize:26,fontWeight:800,letterSpacing:'-.02em'}},title),
       sub&&this.h('p',{style:{color:'var(--muted)',fontSize:14,marginTop:4}},sub)),
     actions&&this.h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},actions))}
-  btn(label,{icon,variant='primary',onClick,size='md',disabled}={}){
+  btn(label,{icon,variant='primary',onClick,size='md',disabled,loading}={}){
+    disabled=disabled||loading;
     const styles={primary:{background:'#169B62',color:'#fff',border:'none',boxShadow:'0 6px 14px -6px rgba(22,155,98,.42)'},ghost:{background:'var(--surface)',color:'var(--text2)',border:'1px solid var(--border)'},danger:{background:'#dc2626',color:'#fff',border:'none'},soft:{background:'color-mix(in srgb, #169B62 16%, transparent)',color:'var(--accent-text)',border:'1px solid color-mix(in srgb, #169B62 32%, transparent)'}}[variant];
-    return this.h('button',{onClick:disabled?null:onClick,disabled,style:{display:'inline-flex',alignItems:'center',gap:7,padding:size==='sm'?'7px 12px':'10px 16px',borderRadius:10,fontWeight:700,fontSize:size==='sm'?12.5:13.5,cursor:disabled?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:disabled?.5:1,...styles}},
-      icon&&this.h('span',{style:{width:16,height:16,display:'flex'},dangerouslySetInnerHTML:{__html:icon}}),label)}
+    return this.h('button',{onClick:disabled?null:onClick,disabled,style:{display:'inline-flex',alignItems:'center',gap:7,padding:size==='sm'?'7px 12px':'10px 16px',borderRadius:10,fontWeight:700,fontSize:size==='sm'?12.5:13.5,cursor:disabled?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:disabled?.6:1,...styles}},
+      loading
+        ?this.h('span',{style:{width:15,height:15,display:'inline-block',border:'2px solid currentColor',borderRightColor:'transparent',borderRadius:'50%',animation:'sfSpin .6s linear infinite'}})
+        :(icon&&this.h('span',{style:{width:16,height:16,display:'flex'},dangerouslySetInnerHTML:{__html:icon}})),
+      loading?'Processing…':label)}
   badge(text,color,bg){return this.h('span',{style:{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:20,fontSize:12,fontWeight:700,color,background:'color-mix(in srgb, '+color+' 16%, transparent)',whiteSpace:'nowrap'}},text)}
   kpi({label,value,sub,subColor,icon,iconBg,iconColor,accent}){
     return this.card([
@@ -1475,7 +1498,9 @@ class Component extends DCLogic {
             ...[['Subtotal',this.bdt(sub)],['Tax (5% VAT)',this.bdt(tax)],['Discount','\u2212'+this.bdt(disc)]].map((r,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',fontSize:13,padding:'3px 0',color:'var(--muted)'}},this.h('span',null,r[0]),this.h('span',{style:{fontWeight:600,color:i===2?'#169B62':'var(--text2)'}},r[1]))),
             this.h('div',{key:'tot',style:{display:'flex',justifyContent:'space-between',padding:'10px 0 4px',marginTop:6,borderTop:'1px dashed var(--border)',fontSize:18,fontWeight:800}},this.h('span',null,'Total'),this.h('span',{style:{color:'#169B62'}},this.bdt(tot))),
             this.h('div',{key:'pm',style:{display:'flex',gap:7,margin:'14px 0'}},['Cash','Card','bKash','Credit'].map((m,i)=>{const on=(this.state.posPay||'Cash')===m;return this.h('button',{key:i,onClick:()=>this.setState({posPay:m}),style:{flex:1,padding:'8px 0',borderRadius:9,fontSize:12,fontWeight:700,cursor:'pointer',border:'1px solid '+(on?'#169B62':'var(--border)'),background:on?'color-mix(in srgb, #169B62 16%, transparent)':'var(--surface)',color:on?'#0E5A3D':'var(--muted)'}},m)})),
-            this.h('button',{key:'go',onClick:cart.length?this.completeSale:null,disabled:!cart.length,style:{width:'100%',padding:'13px',borderRadius:11,border:'none',background:cart.length?'#169B62':'var(--border)',color:cart.length?'#fff':'var(--muted)',fontSize:15,fontWeight:800,cursor:cart.length?'pointer':'not-allowed',boxShadow:cart.length?'0 8px 18px -6px rgba(22,155,98,.42)':'none'}},'Complete sale · '+this.bdt(tot)))
+            this.h('button',{key:'go',onClick:(cart.length&&!this.state.busy)?this.completeSale:null,disabled:!cart.length||this.state.busy,style:{width:'100%',padding:'13px',borderRadius:11,border:'none',background:cart.length?'#169B62':'var(--border)',color:cart.length?'#fff':'var(--muted)',fontSize:15,fontWeight:800,cursor:(cart.length&&!this.state.busy)?'pointer':'not-allowed',opacity:this.state.busy?.7:1,display:'flex',alignItems:'center',justifyContent:'center',gap:9,boxShadow:cart.length?'0 8px 18px -6px rgba(22,155,98,.42)':'none'}},
+              this.state.busy?this.h('span',{style:{width:16,height:16,display:'inline-block',border:'2px solid #fff',borderRightColor:'transparent',borderRadius:'50%',animation:'sfSpin .6s linear infinite'}}):null,
+              this.state.busy?'Processing…':('Complete sale · '+this.bdt(tot))))
         ],{overflow:'hidden',padding:0})));
   }
 
@@ -1838,7 +1863,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{onClick:this.poAddLine,style:{display:'inline-flex',alignItems:'center',gap:7,color:'var(--accent-text)',fontWeight:700,fontSize:13,cursor:'pointer',marginBottom:16}},this.h('span',{style:{width:15,height:15,display:'flex'},dangerouslySetInnerHTML:{__html:I.plus}}),'Add line'),
       this.h('div',{style:{display:'flex',justifyContent:'flex-end'}},this.h('div',{style:{width:240}},
         this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'10px 0 2px',borderTop:'2px solid var(--text)',fontSize:17,fontWeight:800}},this.h('span',null,'Order total'),this.h('span',{style:{color:'#169B62'}},this.bdt(total))))));
-    return this.modalShell('New purchase order','Order stock from a supplier — stock updates when goods are received.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closePo}),this.btn('Create order',{icon:I.check,onClick:this.poSave})],720);
+    return this.modalShell('New purchase order','Order stock from a supplier — stock updates when goods are received.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closePo}),this.btn('Create order',{icon:I.check,onClick:this.poSave,loading:this.state.busy})],720);
   }
   renderReturnModal(){
     const I=this.icons;
@@ -1876,7 +1901,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{display:'flex',justifyContent:'flex-end'}},this.h('div',{style:{width:240}},
         ...[['Subtotal',this.bdt(sub)],['VAT (5%)',this.bdt(vat)]].map((r,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,r[0]),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},r[1]))),
         this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'10px 0 2px',marginTop:4,borderTop:'2px solid #0f172a',fontSize:17,fontWeight:800}},this.h('span',null,'Total'),this.h('span',{style:{color:'#169B62'}},this.bdt(tot))))));
-    return this.modalShell('New invoice','Build a line-item invoice — totals update as you type.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeInvBuilder}),this.btn('Create invoice',{icon:I.check,onClick:this.invSave})],720);
+    return this.modalShell('New invoice','Build a line-item invoice — totals update as you type.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeInvBuilder}),this.btn('Create invoice',{icon:I.check,onClick:this.invSave,loading:this.state.busy})],720);
   }
   renderBillingModal(){
     const I=this.icons;
@@ -2040,7 +2065,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       ph&&this.field('Expiry date',{value:p.exp,onChange:sf('exp'),ph:'YYYY-MM-DD'}),
       this.field('Supplier',{type:'select',value:p.supplier,onChange:sf('supplier'),opts:this.suppliers.map(s=>s.name)}),
       this.field('Warehouse',{type:'select',value:p.warehouse,onChange:sf('warehouse'),opts:this.warehouses.map(w=>w.name),span:2}));
-    return this.modalShell(isNew?'Add '+t.item:'Edit '+t.item,isNew?'Create a new item in your inventory.':p.name,body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save '+t.item,{icon:this.icons.check,onClick:this.saveProduct})],720);
+    return this.modalShell(isNew?'Add '+t.item:'Edit '+t.item,isNew?'Create a new item in your inventory.':p.name,body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save '+t.item,{icon:this.icons.check,onClick:this.saveProduct,loading:this.state.busy})],720);
   }
   renderLossModal(){
     const lf=this.state.lossForm||{};
@@ -2480,7 +2505,10 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       case 'profile':content=this.renderProfile();break;
       default:content=this.emptyView('Notifications');
     }
-    return this.h('div',null,content,
+    return this.h('div',null,
+      this.state.pending>0?this.h('div',{key:'sfprog',style:{position:'fixed',top:0,left:0,right:0,height:3,zIndex:200,overflow:'hidden',pointerEvents:'none'}},
+        this.h('div',{style:{position:'absolute',top:0,height:'100%',width:'45%',borderRadius:'0 3px 3px 0',background:'linear-gradient(90deg,transparent,#169B62,#0d9488,transparent)',animation:'sfProg 1.1s cubic-bezier(.4,0,.2,1) infinite'}})):null,
+      content,
       this.state.productModal&&this.renderProductModal(),
       this.state.lossModal&&this.renderLossModal(),
       this.state.prodConfirm&&this.renderProdConfirm(),
