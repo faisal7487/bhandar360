@@ -478,7 +478,10 @@ class Component extends DCLogic {
   savePhoto=()=>{this.setState({photoModal:false});this.toast(this.tr('Profile photo updated','প্রোফাইল ছবি আপডেট হয়েছে'))};
   openProdModal=()=>this.setState({prodModal:true,quickAddOpen:false});
   saveProd=()=>{this.setState({prodModal:false});this.toast('Production PRD-053 created as draft')};
-  openPoBuilder=()=>this.setState({poBuilder:{supplier:'',lines:[{name:'',qty:1,cost:0}]},quickAddOpen:false});
+  openPoBuilder=()=>{
+    if(!this.suppliers.length){this.toast('Add a supplier first — a purchase order needs one');this.setState({quickAddOpen:false});return}
+    this.setState({poBuilder:{supplier:'',lines:[{name:'',qty:1,cost:0}]},quickAddOpen:false});
+  };
   closePo=()=>this.setState({poBuilder:null});
   poSetSup=(e)=>this.setState(s=>({poBuilder:{...s.poBuilder,supplier:e.target.value}}));
   poSetLine=(i,k,v)=>this.setState(s=>{const lines=s.poBuilder.lines.map((l,j)=>j===i?{...l,[k]:(k==='name'?v:(parseFloat(v)||0))}:l);return{poBuilder:{...s.poBuilder,lines}}});
@@ -488,6 +491,7 @@ class Component extends DCLogic {
     if(this.state.busy)return;
     const b=this.state.poBuilder;
     const sup=this.suppliers.find(s=>s.name===b.supplier);
+    if(!sup){this.toast('Select a supplier before creating the purchase order');return}
     const lines=b.lines.filter(l=>l.name);
     if(!lines.length){this.toast('Add at least one line item');return}
     this.setState({busy:true});
@@ -2005,8 +2009,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     const inp={padding:'9px 11px',border:'1px solid var(--border)',borderRadius:9,fontSize:13.5,fontFamily:'inherit',width:'100%',background:'var(--surface)',color:'var(--text)'};
     const body=this.h('div',null,
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
-        this.h('div',null,this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Supplier'),
-          this.h('select',{value:b.supplier,onChange:this.poSetSup,style:{...inp,appearance:'none'}},this.h('option',{value:''},'Select supplier…'),this.suppliers.map((c,i)=>this.h('option',{key:i,value:c.name},c.name)))),
+        this.h('div',null,this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Supplier ',this.h('span',{style:{color:'#dc2626'}},'*')),
+          this.h('select',{value:b.supplier,onChange:this.poSetSup,style:{...inp,appearance:'none',borderColor:b.supplier?'var(--border)':'#dc2626'}},this.h('option',{value:''},'Select supplier…'),this.suppliers.map((c,i)=>this.h('option',{key:i,value:c.name},c.name)))),
         this.h('div',null,this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Expected delivery'),this.h('input',{defaultValue:'2026-08-25',style:inp}))),
       this.h('div',{style:{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',marginBottom:14}},
         this.h('div',{style:{display:'grid',gridTemplateColumns:'2.4fr .7fr 1fr 1fr 34px',gap:8,padding:'10px 12px',background:'var(--surface-2)',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase'}},this.h('span',null,'Item'),this.h('span',null,'Qty'),this.h('span',null,'Unit cost'),this.h('span',{style:{textAlign:'right'}},'Amount'),this.h('span',null,'')),
@@ -2020,7 +2024,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{onClick:this.poAddLine,style:{display:'inline-flex',alignItems:'center',gap:7,color:'var(--accent-text)',fontWeight:700,fontSize:13,cursor:'pointer',marginBottom:16}},this.h('span',{style:{width:15,height:15,display:'flex'},dangerouslySetInnerHTML:{__html:I.plus}}),'Add line'),
       this.h('div',{style:{display:'flex',justifyContent:'flex-end'}},this.h('div',{style:{width:240}},
         this.h('div',{style:{display:'flex',justifyContent:'space-between',padding:'10px 0 2px',borderTop:'2px solid var(--text)',fontSize:17,fontWeight:800}},this.h('span',null,'Order total'),this.h('span',{style:{color:'#169B62'}},this.bdt(total))))));
-    return this.modalShell('New purchase order','Order stock from a supplier — stock updates when goods are received.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closePo}),this.btn('Create order',{icon:I.check,onClick:this.poSave,loading:this.state.busy})],720);
+    return this.modalShell('New purchase order','Order stock from a supplier — stock updates when goods are received.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closePo}),this.btn('Create order',{icon:I.check,onClick:this.poSave,loading:this.state.busy,disabled:!b.supplier})],720);
   }
   renderReturnModal(){
     const I=this.icons;
