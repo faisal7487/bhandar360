@@ -89,6 +89,8 @@ async function deleteTenant(businessId) {
   await db.prepare('DELETE FROM purchase_orders WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM losses WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM production_runs WHERE business_id = ?').run(businessId);
+  await db.prepare('DELETE FROM recipe_components WHERE recipe_id IN (SELECT id FROM recipes WHERE business_id = ?)').run(businessId);
+  await db.prepare('DELETE FROM recipes WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM products WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM customers WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM suppliers WHERE business_id = ?').run(businessId);

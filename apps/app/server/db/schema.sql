@@ -238,6 +238,36 @@ CREATE TABLE IF NOT EXISTS production_runs (
   created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
 );
 
+-- A recipe (bill of materials) turns raw-material products into a finished
+-- product. `yield_qty` is how many finished units one batch of the listed
+-- component quantities produces; a production run scales every component by
+-- run_qty / yield_qty. `labour_cost` is the per-batch labour/overhead added
+-- into the finished unit cost.
+CREATE TABLE IF NOT EXISTS recipes (
+  id SERIAL PRIMARY KEY,
+  business_id INTEGER NOT NULL REFERENCES businesses(id),
+  product_id INTEGER REFERENCES products(id),
+  name TEXT NOT NULL,
+  yield_qty DOUBLE PRECISION NOT NULL DEFAULT 1,
+  labour_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS recipe_components (
+  id SERIAL PRIMARY KEY,
+  recipe_id INTEGER NOT NULL REFERENCES recipes(id),
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  qty DOUBLE PRECISION NOT NULL DEFAULT 0
+);
+
+-- production_runs predates recipes; existing rows keep working with these
+-- nullable additions. `material_cost`/`labour_cost` are frozen at completion
+-- time so historical run costs don't drift when component prices change later.
+ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS recipe_id INTEGER REFERENCES recipes(id);
+ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS material_cost DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS labour_cost DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE production_runs ADD COLUMN IF NOT EXISTS completed_at TEXT;
+
 CREATE TABLE IF NOT EXISTS team_members (
   id SERIAL PRIMARY KEY,
   business_id INTEGER NOT NULL REFERENCES businesses(id),
@@ -285,6 +315,8 @@ CREATE INDEX IF NOT EXISTS deliveries_business_idx ON deliveries (business_id);
 CREATE INDEX IF NOT EXISTS losses_business_idx ON losses (business_id);
 CREATE INDEX IF NOT EXISTS expenses_business_idx ON expenses (business_id);
 CREATE INDEX IF NOT EXISTS production_runs_business_idx ON production_runs (business_id);
+CREATE INDEX IF NOT EXISTS recipes_business_idx ON recipes (business_id);
+CREATE INDEX IF NOT EXISTS recipe_components_recipe_idx ON recipe_components (recipe_id);
 CREATE INDEX IF NOT EXISTS team_members_business_idx ON team_members (business_id);
 CREATE INDEX IF NOT EXISTS notifications_business_idx ON notifications (business_id);
 CREATE INDEX IF NOT EXISTS memberships_user_idx ON memberships (user_id);

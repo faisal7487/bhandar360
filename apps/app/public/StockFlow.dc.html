@@ -436,7 +436,9 @@ class Component extends DCLogic {
     theme: 'light',
     poBuilder: null,
     returnModal: null,
-    prodModal: false,
+    recipeModal: null,       // recipe (BOM) builder form, or null
+    prodSelRecipe: null,     // recipe id selected on the Production page
+    prodQty: '',             // batch quantity entered on the Production page
     photoModal: false,
     avatarColor: 'linear-gradient(135deg,#169B62,#0d9488)',
     supplierModal: false,
@@ -469,15 +471,62 @@ class Component extends DCLogic {
     dataLoading: false,
     data: {
       products: [], suppliers: [], customers: [], purchaseOrders: [], sales: [],
-      invoices: [], deliveries: [], losses: [], expenses: [], production: [],
+      invoices: [], deliveries: [], losses: [], expenses: [], production: [], recipes: [],
       team: [], notifications: [], branches: [], warehouses: [],
     },
   };
   openPhoto=()=>this.setState({photoModal:true});
   setAvatar=(c)=>()=>this.setState({avatarColor:c});
   savePhoto=()=>{this.setState({photoModal:false});this.toast(this.tr('Profile photo updated','প্রোফাইল ছবি আপডেট হয়েছে'))};
-  openProdModal=()=>this.setState({prodModal:true,quickAddOpen:false});
-  saveProd=()=>{this.setState({prodModal:false});this.toast('Production PRD-053 created as draft')};
+  // ---- Recipes (bill of materials) ----
+  get recipes(){return this.state.data.recipes||[]}
+  openRecipeModal=(recipe)=>{
+    if(!this.products.length){this.toast('Add products first — a recipe is built from them');this.setState({quickAddOpen:false});return}
+    const r=recipe||{};
+    this.setState({quickAddOpen:false,recipeModal:{
+      id:r.id||null,
+      product_id:r.product_id||'',
+      name:r.name||'',
+      yield_qty:r.yield_qty!=null?String(r.yield_qty):'',
+      labour_cost:r.labour_cost!=null?String(r.labour_cost):'',
+      lines:(r.components&&r.components.length?r.components.map(c=>({product_id:c.product_id,qty:String(c.qty)})):[{product_id:'',qty:''}]),
+    }});
+  };
+  closeRecipeModal=()=>this.setState({recipeModal:null});
+  recipeSetField=(k)=>(e)=>this.setState(s=>({recipeModal:{...s.recipeModal,[k]:e.target.value}}));
+  recipeSetLine=(i,k,v)=>this.setState(s=>{const lines=s.recipeModal.lines.map((l,j)=>j===i?{...l,[k]:v}:l);return{recipeModal:{...s.recipeModal,lines}}});
+  recipeAddLine=()=>this.setState(s=>({recipeModal:{...s.recipeModal,lines:[...s.recipeModal.lines,{product_id:'',qty:''}]}}));
+  recipeRemoveLine=(i)=>this.setState(s=>({recipeModal:{...s.recipeModal,lines:s.recipeModal.lines.filter((_,j)=>j!==i)}}));
+  saveRecipe=async()=>{
+    if(this.state.busy)return;
+    const f=this.state.recipeModal;
+    const components=f.lines.map(l=>({product_id:Number(l.product_id)||null,qty:parseFloat(l.qty)||0})).filter(l=>l.product_id&&l.qty>0);
+    if(!f.name.trim()){this.toast('Give the recipe a name');return}
+    if(!f.product_id){this.toast('Select the finished product this recipe produces');return}
+    if(!(parseFloat(f.yield_qty)>0)){this.toast('Batch yield must be greater than zero');return}
+    if(!components.length){this.toast('Add at least one raw material with a quantity');return}
+    const payload={product_id:Number(f.product_id),name:f.name.trim(),yield_qty:parseFloat(f.yield_qty),labour_cost:parseFloat(f.labour_cost)||0,components};
+    this.setState({busy:true});
+    try{
+      if(f.id)await this.api('/api/recipes/'+f.id,{method:'PUT',body:payload});
+      else await this.api('/api/recipes',{method:'POST',body:payload});
+      await this.refresh('recipes','/api/recipes');
+      this.setState({recipeModal:null});
+      this.toast(f.id?'Recipe updated':'Recipe created');
+    }catch(e){this.toast('Could not save recipe — '+e.message)}
+    finally{this.setState({busy:false})}
+  };
+  deleteRecipe=(id)=>async()=>{
+    if(this.state.busy)return;
+    this.setState({busy:true});
+    try{
+      await this.api('/api/recipes/'+id,{method:'DELETE'});
+      await this.refresh('recipes','/api/recipes');
+      this.setState(s=>({prodSelRecipe:s.prodSelRecipe===id?null:s.prodSelRecipe}));
+      this.toast('Recipe deleted');
+    }catch(e){this.toast('Could not delete recipe — '+e.message)}
+    finally{this.setState({busy:false})}
+  };
   openPoBuilder=()=>{
     if(!this.suppliers.length){this.toast('Add a supplier first — a purchase order needs one');this.setState({quickAddOpen:false});return}
     this.setState({poBuilder:{supplier:'',lines:[{name:'',qty:1,cost:0}]},quickAddOpen:false});
@@ -555,7 +604,7 @@ class Component extends DCLogic {
     // independently, keep whatever succeeds, and retry a few times for the
     // ones that error (the shared DB pooler occasionally returns a transient
     // "max clients" 500 under a burst of parallel requests).
-    const endpoints={products:'/api/products',suppliers:'/api/suppliers',customers:'/api/customers',purchaseOrders:'/api/purchase-orders',sales:'/api/sales',invoices:'/api/invoices',deliveries:'/api/deliveries',losses:'/api/losses',expenses:'/api/expenses',production:'/api/production',team:'/api/team',notifications:'/api/notifications',branches:'/api/branches',warehouses:'/api/warehouses'};
+    const endpoints={products:'/api/products',suppliers:'/api/suppliers',customers:'/api/customers',purchaseOrders:'/api/purchase-orders',sales:'/api/sales',invoices:'/api/invoices',deliveries:'/api/deliveries',losses:'/api/losses',expenses:'/api/expenses',production:'/api/production',recipes:'/api/recipes',team:'/api/team',notifications:'/api/notifications',branches:'/api/branches',warehouses:'/api/warehouses'};
     const fetchList=async(url)=>{
       for(let attempt=0;attempt<3;attempt++){
         try{return (await this.api(url)).items||[];}
@@ -849,7 +898,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',supPay:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,bulkEdit:null,bulkDelOpen:false,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,recipeModal:null,photoModal:false,supplierModal:false,supplierForm:null,delSup:null,delSupConfirm:'',bulkDelSup:false,bulkDelSupConfirm:'',supPay:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     if(this.state.busy)return;
     const f=this.state.productForm||{};
@@ -1189,23 +1238,29 @@ class Component extends DCLogic {
     finally{this.setState({busy:false})}
   };
   runProduction=async()=>{
-    const p=this.products[0];
+    if(this.state.busy)return;
+    const c=this.state.prodConfirm;
+    if(!c||!c.recipeId||!(c.qty>0)){this.toast('Pick a recipe and a batch quantity first');return}
+    this.setState({busy:true});
     try{
-      await this.api('/api/production',{method:'POST',body:{product_id:p&&p.id,qty:100,status:'completed'}});
-      await Promise.all([this.refresh('production','/api/production'),this.refresh('products','/api/products')]);
+      await this.api('/api/production',{method:'POST',body:{recipe_id:c.recipeId,qty:c.qty,status:'completed'}});
+      await Promise.all([this.refresh('production','/api/production'),this.refresh('products','/api/products'),this.refresh('recipes','/api/recipes')]);
       this.setState({prodConfirm:null});
-      this.toast('Production completed \u2014 stock & costs recalculated');
+      this.toast('Production completed \u2014 materials deducted, stock & cost updated');
     }catch(e){this.toast('Could not run production \u2014 '+e.message)}
+    finally{this.setState({busy:false})}
   };
   askDeleteProdRun=(run)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delProdRun:run,quickAddOpen:false});};
   confirmDeleteProdRun=async()=>{
-    const run=this.state.delProdRun;if(!run)return;
+    const run=this.state.delProdRun;if(!run||this.state.busy)return;
+    this.setState({busy:true});
     try{
       await this.api('/api/production/'+run.id,{method:'DELETE'});
       await this.refresh('production','/api/production');
       this.setState({delProdRun:null});
       this.toast('Draft production run deleted');
     }catch(e){this.setState({delProdRun:null});this.toast('Could not delete run \u2014 '+e.message)}
+    finally{this.setState({busy:false})}
   };
   setInvFilter=(f)=>()=>this.setState({invFilter:f,invPage:1});
   setInvPage=(n)=>()=>this.setState({invPage:n});
@@ -1820,46 +1875,95 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
 
   // ============ PRODUCTION ============
   renderProduction(){
-    const I=this.icons,ind=this.state.industry;
-    const recipes={
-      restaurant:{name:'Signature Beef Burger',yield:'1 burger',bom:[['Burger Buns',1,'Piece',12],['Beef Mince',0.15,'Kg',93],['Cheddar Cheese',2,'Slice',18],['Special Sauce',0.03,'Litre',5.4],['Takeaway Boxes',1,'Piece',8]]},
-      pharmacy:{name:'Repack: Napa Extra bulk \u2192 strips',yield:'100 strips',bom:[['Napa Extra bulk',1000,'Tablet',180],['Blister foil',100,'Sheet',40],['Printed carton',100,'Piece',30]]},
-      retail:{name:'Assemble: Gift Hamper',yield:'1 hamper',bom:[['Cola 500ml',4,'Bottle',112],['Face Wash 100ml',1,'Piece',145],['Basmati Rice 5kg',1,'Bag',640],['Gift box',1,'Piece',60]]},
-    };
-    const r=recipes[ind], matCost=r.bom.reduce((a,b)=>a+b[3],0), labour=ind==='restaurant'?15:ind==='pharmacy'?90:40, total=matCost+labour;
+    const I=this.icons;
+    const recipes=this.recipes;
+    const prods=this.products;
     const runs=(this.state.data.production||[]);
-    return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
-      this.pageHead('Production','Convert raw materials into finished goods — costs and stock update automatically.',[this.btn('New production',{icon:I.plus,onClick:this.openProdModal})]),
+    const prodById=new Map(prods.map(p=>[p.id,p]));
+    const recentCard=this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:10}},'Recent production'),
+      ...runs.slice(0,8).map((p,i,arr)=>{
+        const done=p.status==='completed';
+        const label=done?'Completed':(p.status==='draft'?'Draft':'In progress');
+        const sc=this.statusColor(done?'Received':'Ordered');
+        const cost=done?(Number(p.material_cost||0)+Number(p.labour_cost||0)):0;
+        const sub=(p.product_name||'—')+(done&&cost?(' · cost '+this.bdt(cost)):'')+' · '+((p.completed_at||p.created_at||'').slice(0,10));
+        return this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 0',borderBottom:i<Math.min(arr.length,8)-1?'1px solid var(--border)':'none'}},
+          this.h('div',{style:{minWidth:0}},this.h('div',{style:{fontSize:13,fontWeight:700}},'PRD-'+String(p.id).padStart(3,'0')+(p.qty?(' · '+(+p.qty)+' units'):'')),this.h('div',{style:{fontSize:11.5,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},sub)),
+          this.h('div',{style:{display:'flex',alignItems:'center',gap:8,flexShrink:0}},
+            this.badge(label,sc.c,sc.b),
+            done?null:this.h('span',{title:'Delete draft',onClick:this.askDeleteProdRun({id:p.id,name:p.product_name||('PRD-'+String(p.id).padStart(3,'0'))}),style:{width:26,height:26,borderRadius:7,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})));
+      }),
+      runs.length?null:this.h('div',{style:{fontSize:12.5,color:'var(--muted)',padding:'8px 0'}},'No production runs yet.')
+    ],{padding:18});
+
+    const head=this.pageHead('Production','Convert raw materials into finished goods — completing a run deducts the recipe’s materials and rolls their cost into the finished product.',
+      recipes.length?[this.btn('New recipe',{icon:I.plus,variant:'ghost',onClick:()=>this.openRecipeModal(null)})]:null);
+
+    if(!recipes.length){
+      return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},head,
+        this.card(this.h('div',{style:{padding:'56px 24px',textAlign:'center'}},
+          this.h('div',{style:{width:52,height:52,borderRadius:14,background:'color-mix(in srgb, #7c3aed 14%, transparent)',color:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'},dangerouslySetInnerHTML:{__html:I.production}}),
+          this.h('div',{style:{fontSize:16,fontWeight:800,marginBottom:6}},'No recipes yet'),
+          this.h('div',{style:{fontSize:13.5,color:'var(--muted)',maxWidth:440,margin:'0 auto 18px',lineHeight:1.5}},'A recipe is a bill of materials — the raw-material products and quantities that make one batch of a finished product. Create one to start producing.'),
+          this.btn('Create your first recipe',{icon:I.plus,onClick:()=>this.openRecipeModal(null)})),{padding:0}));
+    }
+
+    const selId=this.state.prodSelRecipe||recipes[0].id;
+    const r=recipes.find(x=>x.id===selId)||recipes[0];
+    const yield_=Number(r.yield_qty)||1;
+    const qty=parseFloat(this.state.prodQty);
+    const qtyValid=qty>0;
+    const factor=(qtyValid?qty:yield_)/yield_;
+    const r2=(n)=>Math.round(n*100)/100;
+    const rows=(r.components||[]).map(c=>{
+      const live=prodById.get(c.product_id);
+      const need=Number(c.qty)*factor;
+      const have=live?Number(live.stock):Number(c.stock_qty||0);
+      return {name:c.product_name||'(removed product)',unit:c.unit||'',need,have,short:have<need-1e-9,cost:need*Number((live?live.cost:c.cost_price)||0)};
+    });
+    const matCost=rows.reduce((a,b)=>a+b.cost,0);
+    const labour=Number(r.labour_cost||0)*factor;
+    const total=matCost+labour;
+    const anyShort=rows.some(b=>b.short);
+    const missingComponent=rows.some(b=>b.name==='(removed product)');
+    const finished=prodById.get(r.product_id);
+    const canRun=qtyValid&&!anyShort&&!missingComponent&&!!finished&&!this.state.busy;
+    const num={width:'100%',padding:'9px 11px',border:'1px solid var(--border)',borderRadius:9,fontSize:13.5,fontFamily:'inherit',background:'var(--surface)',color:'var(--text)'};
+
+    return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},head,
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 320px',gap:20,alignItems:'start'}},
         this.card([
-          this.h('div',{key:'h',style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},this.h('span',{style:{fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.04em'}},'PRD-052 · Draft'),this.badge('Bill of materials','#7c3aed','#faf5ff')),
-          this.h('h2',{key:'n',style:{fontSize:20,fontWeight:800,marginBottom:2}},r.name),
-          this.h('div',{key:'y',style:{fontSize:13.5,color:'var(--muted)',marginBottom:20}},'Planned yield: '+r.yield+'  ·  Batch: 100 units'),
-          this.h('div',{key:'th',style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',padding:'0 0 10px',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',borderBottom:'1px solid var(--border)'}},this.h('span',null,'Raw material'),this.h('span',{style:{textAlign:'right'}},'Required'),this.h('span',{style:{textAlign:'right'}},'Available'),this.h('span',{style:{textAlign:'right'}},'Cost')),
-          ...r.bom.map((b,i)=>{const avail=[24,60,120,50,340][i]||100;const short=avail<b[1]*100;return this.h('div',{key:i,style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',padding:'12px 0',borderBottom:'1px solid var(--surface-2)',fontSize:13.5,alignItems:'center'}},this.h('span',{style:{fontWeight:600}},b[0]),this.h('span',{style:{textAlign:'right',fontVariantNumeric:'tabular-nums'}},(b[1]*100).toFixed(b[1]<1?1:0)+' '+b[2]),this.h('span',{style:{textAlign:'right',color:short?'#dc2626':'#169B62',fontWeight:600}},avail+' '+b[2]),this.h('span',{style:{textAlign:'right',fontWeight:700}},this.bdt(b[3])))}),
-          this.h('div',{key:'ov',style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',padding:'12px 0',fontSize:13.5,alignItems:'center'}},this.h('span',{style:{fontWeight:600,color:'var(--muted)'}},'Labour & overhead'),this.h('span',null),this.h('span',null),this.h('span',{style:{textAlign:'right',fontWeight:700}},this.bdt(labour)))
+          this.h('div',{key:'sel',style:{display:'flex',gap:10,alignItems:'flex-end',marginBottom:16,flexWrap:'wrap'}},
+            this.h('div',{style:{flex:1,minWidth:180}},
+              this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Recipe'),
+              this.h('select',{value:String(selId),onChange:e=>this.setState({prodSelRecipe:Number(e.target.value),prodQty:''}),style:{...num,appearance:'none'}},
+                recipes.map((x,i)=>this.h('option',{key:i,value:String(x.id)},x.name+(x.product_name?(' → '+x.product_name):''))))),
+            this.h('span',{title:'Edit recipe',onClick:()=>this.openRecipeModal(r),style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}}),
+            this.h('span',{title:'Delete recipe',onClick:this.deleteRecipe(r.id),style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),
+          this.h('div',{key:'meta',style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,gap:10,flexWrap:'wrap'}},
+            this.h('span',{style:{fontSize:13.5,color:'var(--muted)'}},'Produces ',this.h('strong',{style:{color:'var(--text)'}},finished?finished.name:'(finished product removed)'),' · batch yield '+(+yield_)),
+            this.badge('Bill of materials','#7c3aed','#faf5ff')),
+          this.h('div',{key:'th',style:{display:'grid',gridTemplateColumns:'2fr 1.1fr 1.1fr 1fr',padding:'12px 0 10px',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',borderBottom:'1px solid var(--border)'}},this.h('span',null,'Raw material'),this.h('span',{style:{textAlign:'right'}},'Required'),this.h('span',{style:{textAlign:'right'}},'Available'),this.h('span',{style:{textAlign:'right'}},'Cost')),
+          ...rows.map((b,i)=>this.h('div',{key:i,style:{display:'grid',gridTemplateColumns:'2fr 1.1fr 1.1fr 1fr',padding:'12px 0',borderBottom:'1px solid var(--surface-2)',fontSize:13.5,alignItems:'center'}},
+            this.h('span',{style:{fontWeight:600}},b.name),
+            this.h('span',{style:{textAlign:'right',fontVariantNumeric:'tabular-nums'}},r2(b.need)+' '+b.unit),
+            this.h('span',{style:{textAlign:'right',color:b.short?'#dc2626':'#169B62',fontWeight:600}},r2(b.have)+' '+b.unit),
+            this.h('span',{style:{textAlign:'right',fontWeight:700}},this.bdt(b.cost)))),
+          this.h('div',{key:'ov',style:{display:'grid',gridTemplateColumns:'2fr 1.1fr 1.1fr 1fr',padding:'12px 0',fontSize:13.5,alignItems:'center'}},this.h('span',{style:{fontWeight:600,color:'var(--muted)'}},'Labour & overhead'),this.h('span',null),this.h('span',null),this.h('span',{style:{textAlign:'right',fontWeight:700}},this.bdt(labour))),
+          missingComponent?this.h('div',{key:'warn',style:{marginTop:12,fontSize:12.5,color:'#dc2626',fontWeight:600}},'A raw material in this recipe no longer exists — edit the recipe before running it.'):null
         ],{padding:24}),
         this.h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
           this.card([
-            this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:14}},'Cost summary'),
-            ...[['Material cost',this.bdt(matCost)],['Labour & overhead',this.bdt(labour)],['Expected waste (2%)',this.bdt(Math.round(matCost*0.02))]].map((x,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,x[0]),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},x[1]))),
+            this.h('label',{key:'ql',style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Batch quantity to produce'),
+            this.h('input',{key:'qi',type:'number',min:'0',value:this.state.prodQty,placeholder:String(+yield_),onChange:e=>this.setState({prodQty:e.target.value}),style:{...num,marginBottom:16}}),
+            this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:12}},'Cost estimate'),
+            ...[['Material cost',this.bdt(matCost)],['Labour & overhead',this.bdt(labour)]].map((x,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',fontSize:13.5,color:'var(--muted)'}},this.h('span',null,x[0]),this.h('span',{style:{fontWeight:600,color:'var(--text2)'}},x[1]))),
             this.h('div',{key:'t',style:{display:'flex',justifyContent:'space-between',padding:'10px 0 6px',marginTop:6,borderTop:'1px dashed var(--border)',fontWeight:800,fontSize:16}},this.h('span',null,'Total cost'),this.h('span',{style:{color:'#7c3aed'}},this.bdt(total))),
-            this.h('div',{key:'u',style:{display:'flex',justifyContent:'space-between',fontSize:13,color:'var(--muted)',marginTop:2}},this.h('span',null,'Cost per unit'),this.h('span',{style:{fontWeight:700}},this.bdt(total/100))),
-            this.h('button',{key:'run',onClick:()=>this.setState({prodConfirm:{name:r.name,total}}),style:{width:'100%',marginTop:16,padding:'12px',borderRadius:11,border:'none',background:'#7c3aed',color:'#fff',fontSize:14.5,fontWeight:800,cursor:'pointer',boxShadow:'0 8px 18px -6px rgba(124,58,237,.5)'}},'Run production')
+            this.h('div',{key:'u',style:{display:'flex',justifyContent:'space-between',fontSize:13,color:'var(--muted)',marginTop:2}},this.h('span',null,'Cost per unit'),this.h('span',{style:{fontWeight:700}},this.bdt(qtyValid?total/qty:total/yield_))),
+            anyShort?this.h('div',{key:'s',style:{marginTop:12,fontSize:12.5,color:'#dc2626',fontWeight:600}},'Not enough raw material for this quantity.'):null,
+            this.h('button',{key:'run',disabled:!canRun,onClick:canRun?()=>this.setState({prodConfirm:{recipeId:r.id,qty,name:r.name,product:finished&&finished.name,total}}):null,style:{width:'100%',marginTop:16,padding:'12px',borderRadius:11,border:'none',background:canRun?'#7c3aed':'var(--border)',color:canRun?'#fff':'var(--muted)',fontSize:14.5,fontWeight:800,cursor:canRun?'pointer':'not-allowed',boxShadow:canRun?'0 8px 18px -6px rgba(124,58,237,.5)':'none'}},'Run production')
           ],{padding:18}),
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:10}},'Recent production'),
-            ...runs.slice(0,6).map((p,i,arr)=>{
-              const done=p.status==='completed';
-              const label=done?'Completed':(p.status==='draft'?'Draft':'In progress');
-              const sc=this.statusColor(done?'Received':'Ordered');
-              return this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 0',borderBottom:i<Math.min(arr.length,6)-1?'1px solid var(--border)':'none'}},
-                this.h('div',{style:{minWidth:0}},this.h('div',{style:{fontSize:13,fontWeight:700}},'PRD-'+String(p.id).padStart(3,'0')),this.h('div',{style:{fontSize:11.5,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(p.product_name||'—')+' · '+((p.created_at||'').slice(0,10)))),
-                this.h('div',{style:{display:'flex',alignItems:'center',gap:8,flexShrink:0}},
-                  this.badge(label,sc.c,sc.b),
-                  done?null:this.h('span',{title:'Delete draft',onClick:this.askDeleteProdRun({id:p.id,name:p.product_name||('PRD-'+String(p.id).padStart(3,'0'))}),style:{width:26,height:26,borderRadius:7,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})));
-            }),
-            runs.length?null:this.h('div',{style:{fontSize:12.5,color:'var(--muted)',padding:'8px 0'}},'No production runs yet.')
-          ],{padding:18}))));
+          recentCard)));
   }
 
   // ============ LOSSES & WASTE ============
@@ -1991,17 +2095,32 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},opts.map((c,i)=>{const on=this.state.avatarColor===c;return this.h('div',{key:i,onClick:this.setAvatar(c),style:{width:52,height:52,borderRadius:15,background:c,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:15,boxShadow:on?'0 0 0 3px #169B62, 0 0 0 5px var(--surface)':'none'}},'RA')})));
     return this.modalShell(T('Change profile photo','প্রোফাইল ছবি পরিবর্তন'),T('Upload an image or choose an avatar colour.','ছবি আপলোড করুন বা রঙ বাছুন।'),body,[this.btn(T('Remove photo','ছবি সরান'),{variant:'ghost',onClick:()=>{this.setState({photoModal:false,avatarColor:'linear-gradient(135deg,#475569,#0f172a)'});this.toast(T('Photo removed','ছবি সরানো হয়েছে'))}}),this.btn(T('Save photo','ছবি সেভ করুন'),{icon:I.check,onClick:this.savePhoto})],520);
   }
-  renderProdModal(){
-    const I=this.icons;
-    const body=this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
-      this.field('Finished product',{value:this.products[0].name,span:2}),
-      this.field('Planned quantity',{ph:'100',req:true}),
-      this.field('Unit',{type:'select',opts:['Strip','Piece','Box','Kg','Litre']}),
-      this.field('Batch number',{value:'PRD-B'+Math.floor(Math.random()*9000+1000)}),
-      this.field('Production date',{value:'2026-08-21'}),
-      this.field('Assigned to',{type:'select',opts:['Production Staff','Rahim Ahmed','Nusrat Jahan']}),
-      this.field('Notes',{type:'textarea',ph:'Optional notes…',span:2}));
-    return this.modalShell('New production','Start a production run — raw materials deduct when completed.',body,[this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({prodModal:false})}),this.btn('Create draft',{icon:I.check,onClick:this.saveProd})],620);
+  renderRecipeModal(){
+    const I=this.icons,f=this.state.recipeModal,prods=this.products;
+    const inp={padding:'9px 11px',border:'1px solid var(--border)',borderRadius:9,fontSize:13.5,fontFamily:'inherit',width:'100%',background:'var(--surface)',color:'var(--text)'};
+    const lbl={display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6};
+    const req=this.h('span',{style:{color:'#dc2626'}},' *');
+    const prodOptions=[this.h('option',{key:'x',value:''},'Select product…'),...prods.map((p,i)=>this.h('option',{key:i,value:String(p.id)},p.name))];
+    const body=this.h('div',null,
+      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
+        this.h('div',{style:{gridColumn:'span 2'}},this.h('label',{style:lbl},'Recipe name',req),
+          this.h('input',{value:f.name,onChange:this.recipeSetField('name'),placeholder:'e.g. Signature Beef Burger',style:{...inp,borderColor:f.name.trim()?'var(--border)':'#dc2626'}})),
+        this.h('div',{style:{gridColumn:'span 2'}},this.h('label',{style:lbl},'Finished product',req),
+          this.h('select',{value:String(f.product_id||''),onChange:this.recipeSetField('product_id'),style:{...inp,appearance:'none',borderColor:f.product_id?'var(--border)':'#dc2626'}},prodOptions)),
+        this.h('div',null,this.h('label',{style:lbl},'Batch yield (units per batch)',req),
+          this.h('input',{type:'number',min:'0',value:f.yield_qty,onChange:this.recipeSetField('yield_qty'),placeholder:'100',style:{...inp,borderColor:parseFloat(f.yield_qty)>0?'var(--border)':'#dc2626'}})),
+        this.h('div',null,this.h('label',{style:lbl},'Labour & overhead per batch (৳)'),
+          this.h('input',{type:'number',min:'0',value:f.labour_cost,onChange:this.recipeSetField('labour_cost'),placeholder:'0',style:inp}))),
+      this.h('div',{style:{fontSize:12.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:8}},'Raw materials per batch'),
+      this.h('div',{style:{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',marginBottom:14}},
+        this.h('div',{style:{display:'grid',gridTemplateColumns:'2.6fr 1fr 34px',gap:8,padding:'10px 12px',background:'var(--surface-2)',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase'}},this.h('span',null,'Product'),this.h('span',null,'Qty'),this.h('span',null,'')),
+        f.lines.map((l,i)=>this.h('div',{key:i,style:{display:'grid',gridTemplateColumns:'2.6fr 1fr 34px',gap:8,padding:'8px 12px',borderTop:'1px solid var(--border)',alignItems:'center'}},
+          this.h('select',{value:String(l.product_id||''),onChange:e=>this.recipeSetLine(i,'product_id',e.target.value),style:{...inp,appearance:'none'}},prodOptions),
+          this.h('input',{type:'number',min:'0',value:l.qty,placeholder:'0',onChange:e=>this.recipeSetLine(i,'qty',e.target.value),style:{...inp,textAlign:'right'}}),
+          this.h('span',{onClick:f.lines.length>1?()=>this.recipeRemoveLine(i):null,style:{width:28,height:28,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',cursor:f.lines.length>1?'pointer':'default',color:f.lines.length>1?'#dc2626':'var(--border)'},dangerouslySetInnerHTML:{__html:I.trash}})))),
+      this.h('div',{onClick:this.recipeAddLine,style:{display:'inline-flex',alignItems:'center',gap:7,color:'var(--accent-text)',fontWeight:700,fontSize:13,cursor:'pointer'}},this.h('span',{style:{width:15,height:15,display:'flex'},dangerouslySetInnerHTML:{__html:I.plus}}),'Add material'));
+    return this.modalShell(f.id?'Edit recipe':'New recipe','A recipe scales its material quantities to any batch size when you run production.',body,
+      [this.btn('Cancel',{variant:'ghost',onClick:this.closeRecipeModal}),this.btn(f.id?'Save changes':'Create recipe',{icon:I.check,onClick:this.saveRecipe,loading:this.state.busy})],640);
   }
   renderPoBuilderModal(){
     const I=this.icons,b=this.state.poBuilder,prods=this.products;
@@ -2358,8 +2477,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{onClick:e=>e.stopPropagation(),style:{width:'100%',maxWidth:420,background:'var(--surface)',borderRadius:18,padding:28,textAlign:'center',boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)',animation:'sfScale .2s ease both'}},
         this.h('div',{style:{width:56,height:56,borderRadius:16,background:'color-mix(in srgb, #7c3aed 16%, transparent)',color:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'},dangerouslySetInnerHTML:{__html:this.icons.production}}),
         this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Run production?'),
-        this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'This will deduct raw materials, add finished goods to inventory, and recalculate cost for '+c.name+'.'),
-        this.h('div',{style:{display:'flex',gap:10}},this.h('button',{onClick:()=>this.setState({prodConfirm:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),this.h('button',{onClick:this.runProduction,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,cursor:'pointer'}},'Confirm & run'))));
+        this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'This deducts the “'+c.name+'” materials from stock, adds '+(+c.qty)+' × '+(c.product||'finished units')+' to inventory, and blends the '+this.bdt(c.total)+' batch cost into that product’s unit cost.'),
+        this.h('div',{style:{display:'flex',gap:10}},this.h('button',{onClick:()=>this.setState({prodConfirm:null}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),this.h('button',{onClick:this.state.busy?null:this.runProduction,disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.7:1}},this.state.busy?'Running…':'Confirm & run'))));
   }
   renderDeleteProductConfirm(){
     const p=this.state.delProduct||{};
@@ -2726,7 +2845,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.state.billingModal&&this.renderBillingModal(),
       this.state.invBuilder&&this.renderInvBuilderModal(),
       this.state.poBuilder&&this.renderPoBuilderModal(),
-      this.state.prodModal&&this.renderProdModal(),
+      this.state.recipeModal&&this.renderRecipeModal(),
       this.state.photoModal&&this.renderPhotoModal(),
       this.state.returnModal&&this.renderReturnModal(),
       this.state.createDelModal&&this.renderCreateDelModal(),

@@ -25,6 +25,7 @@ app.use('/api/deliveries', require('./routes/deliveries'));
 app.use('/api/losses', require('./routes/losses'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/production', require('./routes/production'));
+app.use('/api/recipes', require('./routes/recipes'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reports', require('./routes/reports'));
