@@ -1307,7 +1307,7 @@ class Component extends DCLogic {
     else if(s.invFilter==='out')ps=ps.filter(p=>p.stock===0);
     else if(s.invFilter==='exp')ps=ps.filter(p=>{const d=this.daysTo(p.exp);return d<120&&d>0});
     const filters=[['all','All '+t.items,this.products.length],['low','Low stock',this.products.filter(p=>p.stock>0&&p.stock<p.min).length],['out','Out of stock',this.products.filter(p=>p.stock===0).length],['exp','Expiring',this.products.filter(p=>{const d=this.daysTo(p.exp);return d<120&&d>0}).length]];
-    const PER=50;
+    const PER=20;
     const totalRows=ps.length;
     const pageCount=Math.max(1,Math.ceil(totalRows/PER));
     const page=Math.min(Math.max(1,s.invPage||1),pageCount);
