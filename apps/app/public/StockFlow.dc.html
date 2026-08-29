@@ -380,6 +380,7 @@ class Component extends DCLogic {
     invSearch: '',
     prodConfirm: null,
     delProduct: null,
+    delProdRun: null,
     selectedInvoiceId: null,
     delTab: 'overview',
     selectedDelivery: null,
@@ -724,7 +725,7 @@ class Component extends DCLogic {
     this.setState({productModal:p||'new',productForm:p?{...p}:blank,quickAddOpen:false});
   };
   setProductField=(k)=>(e)=>this.setState(s=>({productForm:{...s.productForm,[k]:e.target.value}}));
-  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
+  closeModal=()=>this.setState({productModal:null,productForm:null,delProduct:null,delProdRun:null,lossModal:false,lossForm:null,billingModal:false,invBuilder:null,poBuilder:null,returnModal:null,createDelModal:false,deliveryForm:null,courierConfig:null,trackModal:null,prodConfirm:null,prodModal:false,photoModal:false,supplierModal:false,supplierForm:null,customerModal:false,customerForm:null,expenseModal:false,expenseForm:null,teamModal:false,teamForm:null,branchModal:false,branchForm:null,warehouseModal:false,warehouseForm:null,deleteBizModal:false,deleteBizConfirm:''});
   saveProduct=async()=>{
     const f=this.state.productForm||{};
     const wh=this.warehouses.find(w=>w.name===f.warehouse);
@@ -986,6 +987,16 @@ class Component extends DCLogic {
       this.setState({prodConfirm:null});
       this.toast('Production completed \u2014 stock & costs recalculated');
     }catch(e){this.toast('Could not run production \u2014 '+e.message)}
+  };
+  askDeleteProdRun=(run)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delProdRun:run,quickAddOpen:false});};
+  confirmDeleteProdRun=async()=>{
+    const run=this.state.delProdRun;if(!run)return;
+    try{
+      await this.api('/api/production/'+run.id,{method:'DELETE'});
+      await this.refresh('production','/api/production');
+      this.setState({delProdRun:null});
+      this.toast('Draft production run deleted');
+    }catch(e){this.setState({delProdRun:null});this.toast('Could not delete run \u2014 '+e.message)}
   };
   setInvFilter=(f)=>()=>this.setState({invFilter:f});
   onboNext=async()=>{
@@ -1569,7 +1580,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       retail:{name:'Assemble: Gift Hamper',yield:'1 hamper',bom:[['Cola 500ml',4,'Bottle',112],['Face Wash 100ml',1,'Piece',145],['Basmati Rice 5kg',1,'Bag',640],['Gift box',1,'Piece',60]]},
     };
     const r=recipes[ind], matCost=r.bom.reduce((a,b)=>a+b[3],0), labour=ind==='restaurant'?15:ind==='pharmacy'?90:40, total=matCost+labour;
-    const recent=(this.state.data.production||[]).map(p=>['PRD-'+String(p.id).padStart(3,'0'),p.product_name||r.name,p.status==='completed'?'Completed':'In progress',(p.created_at||'').slice(0,10),total]);
+    const runs=(this.state.data.production||[]);
     return this.h('div',{style:{maxWidth:1200,margin:'0 auto'}},
       this.pageHead('Production','Convert raw materials into finished goods — costs and stock update automatically.',[this.btn('New production',{icon:I.plus,onClick:this.openProdModal})]),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 320px',gap:20,alignItems:'start'}},
@@ -1589,7 +1600,19 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
             this.h('div',{key:'u',style:{display:'flex',justifyContent:'space-between',fontSize:13,color:'var(--muted)',marginTop:2}},this.h('span',null,'Cost per unit'),this.h('span',{style:{fontWeight:700}},this.bdt(total/100))),
             this.h('button',{key:'run',onClick:()=>this.setState({prodConfirm:{name:r.name,total}}),style:{width:'100%',marginTop:16,padding:'12px',borderRadius:11,border:'none',background:'#7c3aed',color:'#fff',fontSize:14.5,fontWeight:800,cursor:'pointer',boxShadow:'0 8px 18px -6px rgba(124,58,237,.5)'}},'Run production')
           ],{padding:18}),
-          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:10}},'Recent production'),...recent.map((x,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:i<2?'1px solid var(--border)':'none'}},this.h('div',null,this.h('div',{style:{fontSize:13,fontWeight:700}},x[0]),this.h('div',{style:{fontSize:11.5,color:'var(--muted)'}},x[3])),this.badge(x[2],this.statusColor(x[2]==='Completed'?'Received':'Ordered').c,this.statusColor(x[2]==='Completed'?'Received':'Ordered').b)))],{padding:18}))));
+          this.card([this.h('div',{key:'h',style:{fontSize:14,fontWeight:800,marginBottom:10}},'Recent production'),
+            ...runs.slice(0,6).map((p,i,arr)=>{
+              const done=p.status==='completed';
+              const label=done?'Completed':(p.status==='draft'?'Draft':'In progress');
+              const sc=this.statusColor(done?'Received':'Ordered');
+              return this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'9px 0',borderBottom:i<Math.min(arr.length,6)-1?'1px solid var(--border)':'none'}},
+                this.h('div',{style:{minWidth:0}},this.h('div',{style:{fontSize:13,fontWeight:700}},'PRD-'+String(p.id).padStart(3,'0')),this.h('div',{style:{fontSize:11.5,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(p.product_name||'—')+' · '+((p.created_at||'').slice(0,10)))),
+                this.h('div',{style:{display:'flex',alignItems:'center',gap:8,flexShrink:0}},
+                  this.badge(label,sc.c,sc.b),
+                  done?null:this.h('span',{title:'Delete draft',onClick:this.askDeleteProdRun({id:p.id,name:p.product_name||('PRD-'+String(p.id).padStart(3,'0'))}),style:{width:26,height:26,borderRadius:7,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})));
+            }),
+            runs.length?null:this.h('div',{style:{fontSize:12.5,color:'var(--muted)',padding:'8px 0'}},'No production runs yet.')
+          ],{padding:18}))));
   }
 
   // ============ LOSSES & WASTE ============
@@ -2040,6 +2063,18 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.h('button',{onClick:()=>this.setState({delProduct:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
           this.h('button',{onClick:this.confirmDeleteProduct,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete '+t.item.toLowerCase()))));
   }
+  renderDeleteProdRunConfirm(){
+    const run=this.state.delProdRun||{};
+    const I=this.icons;
+    return this.h('div',{key:'dprc',onClick:()=>this.setState({delProdRun:null}),style:{position:'fixed',inset:0,zIndex:95,background:'rgba(15,23,42,.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:24,animation:'sfFade .18s ease both'}},
+      this.h('div',{onClick:e=>e.stopPropagation(),style:{width:'100%',maxWidth:420,background:'var(--surface)',borderRadius:18,padding:28,textAlign:'center',boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)',animation:'sfScale .2s ease both'}},
+        this.h('div',{style:{width:56,height:56,borderRadius:16,background:'color-mix(in srgb, #dc2626 16%, transparent)',color:'#dc2626',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'},dangerouslySetInnerHTML:{__html:I.trash}}),
+        this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete draft production run?'),
+        this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'The draft run for ',this.h('strong',null,run.name||''),' will be removed. This can’t be undone. Completed runs can’t be deleted.'),
+        this.h('div',{style:{display:'flex',gap:10}},
+          this.h('button',{onClick:()=>this.setState({delProdRun:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
+          this.h('button',{onClick:this.confirmDeleteProdRun,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete draft'))));
+  }
   renderImportConfirm(){
     const c=this.state.importConfirm||{};
     const dups=c.duplicates||[];
@@ -2337,6 +2372,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.state.lossModal&&this.renderLossModal(),
       this.state.prodConfirm&&this.renderProdConfirm(),
       this.state.delProduct&&this.renderDeleteProductConfirm(),
+      this.state.delProdRun&&this.renderDeleteProdRunConfirm(),
       this.state.importConfirm&&this.renderImportConfirm(),
       this.state.billingModal&&this.renderBillingModal(),
       this.state.invBuilder&&this.renderInvBuilderModal(),

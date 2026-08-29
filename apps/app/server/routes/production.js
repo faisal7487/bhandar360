@@ -63,8 +63,13 @@ router.put('/:id', ah(async (req, res) => {
 }));
 
 router.delete('/:id', ah(async (req, res) => {
-  const existing = await db.prepare('SELECT id FROM production_runs WHERE id = ? AND business_id = ?').get(req.params.id, req.user.business_id);
+  const existing = await db
+    .prepare('SELECT id, status FROM production_runs WHERE id = ? AND business_id = ?')
+    .get(req.params.id, req.user.business_id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (existing.status === 'completed') {
+    return res.status(400).json({ error: 'Completed production runs can’t be deleted — they have already credited stock.' });
+  }
   await db.prepare('DELETE FROM production_runs WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 }));
