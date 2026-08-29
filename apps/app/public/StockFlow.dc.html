@@ -454,6 +454,14 @@ class Component extends DCLogic {
       this.toast('Purchase order created');
     }catch(e){this.toast('Could not create purchase order — '+e.message)}
   };
+  receivePO=(poId)=>async(e)=>{
+    if(e&&e.stopPropagation)e.stopPropagation();
+    try{
+      await this.api('/api/purchase-orders/'+poId,{method:'PUT',body:{status:'received'}});
+      await Promise.all([this.refresh('purchaseOrders','/api/purchase-orders'),this.refresh('products','/api/products')]);
+      this.toast('Goods received — stock updated');
+    }catch(err){this.toast('Could not receive order — '+err.message)}
+  };
   openReturn=()=>this.setState({returnModal:true,quickAddOpen:false});
   saveReturn=()=>{this.setState({returnModal:null});this.toast('Purchase return recorded — supplier balance adjusted')};
   componentDidMount(){this.applyTheme();this.boot()}
@@ -1626,18 +1634,26 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
   // ============ PURCHASES ============
   renderPurchases(){
     const I=this.icons;
+    const pos=this.purchases;
     const payable=this.suppliers.reduce((a,s)=>a+s.due,0);
+    const openOrders=pos.filter(p=>p.status==='Ordered'||p.status==='Partial').length;
+    const receivedTotal=pos.filter(p=>p.status==='Received').reduce((a,p)=>a+(p.total||0),0);
+    const openValue=pos.filter(p=>p.status==='Ordered'||p.status==='Partial').reduce((a,p)=>a+(p.total||0),0);
     return this.h('div',{style:{maxWidth:1280,margin:'0 auto'}},
       this.pageHead('Purchases','Purchase orders, goods received and supplier balances.',[this.btn('Purchase return',{variant:'ghost',onClick:this.openReturn}),this.btn('New purchase order',{icon:I.plus,onClick:this.openPoBuilder})]),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}},
-        this.kpi({label:'Open orders',value:'3',sub:'awaiting delivery',subColor:'#2563eb',icon:I.purchases,iconBg:'#eff6ff',iconColor:'#2563eb'}),
-        this.kpi({label:'Received this week',value:this.bdt(41500),icon:I.box,iconBg:'#e7f6ef',iconColor:'#169B62'}),
-        this.kpi({label:'Accounts payable',value:this.bdt(payable),sub:'across 3 suppliers',subColor:'#d97706',icon:I.money,iconBg:'#fffbeb',iconColor:'#d97706',accent:'#f59e0b'}),
-        this.kpi({label:'Purchase returns',value:this.bdt(1200),sub:'this month',subColor:'var(--muted)',icon:I.warn,iconBg:'#fef2f2',iconColor:'#dc2626'})),
-      this.table(['PO number','Supplier','Items','Date','Total',{t:'Status'},{t:'',align:'right'}],
-        this.purchases.map((p,i)=>this.h('tr',{key:i,'data-hover':'',onClick:()=>this.toast('Opening '+p.id+' — '+p.supplier),style:{cursor:'pointer'}},
+        this.kpi({label:'Open orders',value:String(openOrders),sub:'awaiting delivery',subColor:'#2563eb',icon:I.purchases,iconBg:'#eff6ff',iconColor:'#2563eb'}),
+        this.kpi({label:'Open order value',value:this.bdt(openValue),sub:'not yet received',subColor:'var(--muted)',icon:I.box,iconBg:'#e7f6ef',iconColor:'#169B62'}),
+        this.kpi({label:'Received',value:this.bdt(receivedTotal),sub:pos.filter(p=>p.status==='Received').length+' orders',subColor:'#169B62',icon:I.money,iconBg:'#f2fbf7',iconColor:'#169B62'}),
+        this.kpi({label:'Accounts payable',value:this.bdt(payable),sub:'across '+this.suppliers.length+' suppliers',subColor:'#d97706',icon:I.money,iconBg:'#fffbeb',iconColor:'#d97706',accent:'#f59e0b'})),
+      pos.length?this.table(['PO number','Supplier','Items','Date','Total',{t:'Status'},{t:'',align:'right'}],
+        pos.map((p,i)=>this.h('tr',{key:p._id||i,'data-hover':'',style:{}},
           this.td(this.h('span',{style:{fontWeight:700}},p.id)),this.td(p.supplier),this.td(p.items+' items'),this.td(p.date,{color:'var(--muted)'}),this.td(this.bdt(p.total),{mono:true,bold:true}),this.td(this.badge(p.status,this.statusColor(p.status).c,this.statusColor(p.status).b)),
-          this.td(p.status!=='Received'?this.btn('Receive',{variant:'soft',size:'sm',onClick:(e)=>{e.stopPropagation();this.toast('Goods received — stock updated')}}):this.btn('View',{variant:'ghost',size:'sm',onClick:(e)=>{e.stopPropagation();this.toast('Goods receipt for '+p.id)}}),{align:'right'})))));
+          this.td(p.status!=='Received'&&p.status!=='Cancelled'?this.btn('Receive',{variant:'soft',size:'sm',onClick:this.receivePO(p._id)}):this.h('span',{style:{fontSize:12.5,color:'var(--muted)'}},p.status),{align:'right'}))))
+        :this.card(this.h('div',{style:{padding:'56px 24px',textAlign:'center',color:'var(--muted)'}},
+          this.h('div',{style:{fontSize:15,fontWeight:700,color:'var(--text2)',marginBottom:6}},'No purchase orders yet'),
+          this.h('div',{style:{marginBottom:16}},'Create a purchase order to track incoming stock.'),
+          this.btn('New purchase order',{icon:I.plus,onClick:this.openPoBuilder})),{padding:0}));
   }
 
   // ============ PRODUCTION ============
