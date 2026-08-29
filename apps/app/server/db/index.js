@@ -13,6 +13,19 @@ types.setTypeParser(20, (val) => parseInt(val, 10));
 
 const ssl = process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false };
 
+// Supabase's session pooler on the free/Nano tier caps total connections very
+// low (≈15), shared across every serverless instance. The default node-postgres
+// pool (max 10) means two warm instances alone can exhaust it, and the client's
+// dashboard/inventory load fires ~14 requests at once — several would come back
+// as "max clients reached" 500s, blanking the whole UI. Keep the per-instance
+// pool small so requests queue on a free client instead of erroring, and let
+// idle clients drop quickly so instances don't hoard connections while frozen.
+const poolTuning = {
+  max: Number(process.env.PGPOOLMAX || 4),
+  idleTimeoutMillis: Number(process.env.PGPOOLIDLE || 10000),
+  connectionTimeoutMillis: Number(process.env.PGPOOLTIMEOUT || 10000),
+};
+
 // Prefer discrete PGHOST/PGUSER/PGPASSWORD/... fields over a single
 // DATABASE_URL: Supabase passwords often contain characters (%, +, etc.)
 // that aren't valid unescaped in a URI, and get mis-parsed or throw when
@@ -27,9 +40,10 @@ if (process.env.PGHOST) {
     password: process.env.PGPASSWORD,
     database: process.env.PGDATABASE || 'postgres',
     ssl,
+    ...poolTuning,
   };
 } else if (process.env.DATABASE_URL) {
-  poolConfig = { connectionString: process.env.DATABASE_URL, ssl };
+  poolConfig = { connectionString: process.env.DATABASE_URL, ssl, ...poolTuning };
 } else {
   throw new Error(
     'No database connection configured. Copy .env.example to .env and fill in your Supabase Postgres credentials (PGHOST/PGUSER/PGPASSWORD/PGDATABASE, or DATABASE_URL).'

@@ -481,20 +481,27 @@ class Component extends DCLogic {
     }catch(e){}
   }
   async loadAllData(){
-    try{
-      const [products,suppliers,customers,purchaseOrders,sales,invoices,deliveries,losses,expenses,production,team,notifications,branches,warehouses]=await Promise.all([
-        this.api('/api/products'),this.api('/api/suppliers'),this.api('/api/customers'),this.api('/api/purchase-orders'),
-        this.api('/api/sales'),this.api('/api/invoices'),this.api('/api/deliveries'),this.api('/api/losses'),
-        this.api('/api/expenses'),this.api('/api/production'),this.api('/api/team'),this.api('/api/notifications'),
-        this.api('/api/branches'),this.api('/api/warehouses'),
-      ]);
-      this.setState({data:{
-        products:products.items,suppliers:suppliers.items,customers:customers.items,purchaseOrders:purchaseOrders.items,
-        sales:sales.items,invoices:invoices.items,deliveries:deliveries.items,losses:losses.items,expenses:expenses.items,
-        production:production.items,team:team.items,notifications:notifications.items,
-        branches:branches.items,warehouses:warehouses.items,
-      }});
-    }catch(e){this.toast('Could not load data — '+e.message)}
+    // One failing request must not blank the whole app — load each list
+    // independently, keep whatever succeeds, and retry a few times for the
+    // ones that error (the shared DB pooler occasionally returns a transient
+    // "max clients" 500 under a burst of parallel requests).
+    const endpoints={products:'/api/products',suppliers:'/api/suppliers',customers:'/api/customers',purchaseOrders:'/api/purchase-orders',sales:'/api/sales',invoices:'/api/invoices',deliveries:'/api/deliveries',losses:'/api/losses',expenses:'/api/expenses',production:'/api/production',team:'/api/team',notifications:'/api/notifications',branches:'/api/branches',warehouses:'/api/warehouses'};
+    const fetchList=async(url)=>{
+      for(let attempt=0;attempt<3;attempt++){
+        try{return (await this.api(url)).items||[];}
+        catch(e){if(attempt===2)throw e;await new Promise(r=>setTimeout(r,350*(attempt+1)));}
+      }
+    };
+    const results=await Promise.allSettled(Object.values(endpoints).map(fetchList));
+    const keys=Object.keys(endpoints);
+    const data={...this.state.data};
+    const failed=[];
+    results.forEach((res,i)=>{
+      if(res.status==='fulfilled')data[keys[i]]=res.value;
+      else failed.push(keys[i]);
+    });
+    this.setState({data});
+    if(failed.length)this.toast('Some data didn’t load ('+failed.join(', ')+') — refresh to retry');
   }
   async refresh(key,endpoint){
     const r=await this.api(endpoint);
