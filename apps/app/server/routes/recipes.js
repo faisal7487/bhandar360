@@ -7,6 +7,15 @@ const { assertOwned } = require('../utils/tenant');
 const router = express.Router();
 router.use(requireAuth);
 
+// Recipes back the Production module, which is restaurant + retail only.
+const PRODUCTION_INDUSTRIES = new Set(['restaurant', 'retail']);
+router.use((req, res, next) => {
+  if (!PRODUCTION_INDUSTRIES.has(req.business && req.business.industry)) {
+    return res.status(403).json({ error: 'Production is not available for this business type' });
+  }
+  next();
+});
+
 // Returns the recipe with its component lines already joined to the current
 // product name / cost / stock, so the frontend can render availability and a
 // cost estimate without cross-referencing the product list itself.

@@ -7,6 +7,17 @@ const { assertOwned, HttpError } = require('../utils/tenant');
 const router = express.Router();
 router.use(requireAuth);
 
+// Production (recipes / bill-of-materials) is only meaningful for businesses
+// that build goods: restaurants (kitchen prep) and retail (assembly / repack).
+// Other industries — pharmacy — don't get the module at all.
+const PRODUCTION_INDUSTRIES = new Set(['restaurant', 'retail']);
+router.use((req, res, next) => {
+  if (!PRODUCTION_INDUSTRIES.has(req.business && req.business.industry)) {
+    return res.status(403).json({ error: 'Production is not available for this business type' });
+  }
+  next();
+});
+
 const round = (n) => Math.round(n * 100) / 100;
 
 router.get('/', ah(async (req, res) => {

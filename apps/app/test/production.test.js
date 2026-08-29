@@ -5,13 +5,15 @@
 // partial deduction), and can't be completed or deleted twice.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, stopServer, newTenant, deleteTenant } = require('./helpers');
+const { startServer, stopServer, newTenant, deleteTenant, db } = require('./helpers');
 
 let tenant;
 
 before(async () => {
   await startServer();
   tenant = await newTenant('production');
+  // Production is restaurant + retail only; signup always creates a pharmacy.
+  await db.prepare("UPDATE businesses SET industry = 'retail' WHERE id = ?").run(tenant.businessId);
 });
 
 after(async () => {
@@ -140,4 +142,16 @@ test('a completed run cannot be completed again or deleted', async () => {
 
   const del = await client.del(`/api/production/${runId}`);
   assert.equal(del.status, 400);
+});
+
+test('production and recipes are 403 for a non-manufacturing industry', async () => {
+  const other = await newTenant('production-pharma');
+  try {
+    await db.prepare("UPDATE businesses SET industry = 'pharmacy' WHERE id = ?").run(other.businessId);
+    assert.equal((await other.client.get('/api/recipes')).status, 403);
+    assert.equal((await other.client.get('/api/production')).status, 403);
+    assert.equal((await other.client.post('/api/recipes', { name: 'x' })).status, 403);
+  } finally {
+    await deleteTenant(other.businessId);
+  }
 });

@@ -479,6 +479,10 @@ class Component extends DCLogic {
   setAvatar=(c)=>()=>this.setState({avatarColor:c});
   savePhoto=()=>{this.setState({photoModal:false});this.toast(this.tr('Profile photo updated','প্রোফাইল ছবি আপডেট হয়েছে'))};
   // ---- Recipes (bill of materials) ----
+  // Production / recipes only apply to businesses that actually build goods —
+  // restaurants (kitchen prep) and retail (assembly/repack). Pharmacies don't
+  // manufacture, so the whole module is hidden for them.
+  get productionEnabled(){const i=this.state.industry;return i==='restaurant'||i==='retail'}
   get recipes(){return this.state.data.recipes||[]}
   openRecipeModal=(recipe)=>{
     if(!this.products.length){this.toast('Add products first — a recipe is built from them');this.setState({quickAddOpen:false});return}
@@ -604,7 +608,10 @@ class Component extends DCLogic {
     // independently, keep whatever succeeds, and retry a few times for the
     // ones that error (the shared DB pooler occasionally returns a transient
     // "max clients" 500 under a burst of parallel requests).
-    const endpoints={products:'/api/products',suppliers:'/api/suppliers',customers:'/api/customers',purchaseOrders:'/api/purchase-orders',sales:'/api/sales',invoices:'/api/invoices',deliveries:'/api/deliveries',losses:'/api/losses',expenses:'/api/expenses',production:'/api/production',recipes:'/api/recipes',team:'/api/team',notifications:'/api/notifications',branches:'/api/branches',warehouses:'/api/warehouses'};
+    const endpoints={products:'/api/products',suppliers:'/api/suppliers',customers:'/api/customers',purchaseOrders:'/api/purchase-orders',sales:'/api/sales',invoices:'/api/invoices',deliveries:'/api/deliveries',losses:'/api/losses',expenses:'/api/expenses',team:'/api/team',notifications:'/api/notifications',branches:'/api/branches',warehouses:'/api/warehouses'};
+    // Production/recipes are restaurant + retail only — the routes 403 for other
+    // industries, so don't ask for them.
+    if(this.productionEnabled)Object.assign(endpoints,{production:'/api/production',recipes:'/api/recipes'});
     const fetchList=async(url)=>{
       for(let attempt=0;attempt<3;attempt++){
         try{return (await this.api(url)).items||[];}
@@ -1464,7 +1471,7 @@ class Component extends DCLogic {
       ,
       // quick actions row
       this.h('div',{style:{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}},
-        [[T('Add ','যোগ করুন ')+IT,I.box,'#169B62',this.editProduct(null)],[T('Record Purchase','ক্রয় রেকর্ড'),I.purchases,'#2563eb',this.go('purchases')],[T('Create Sale','বিক্রয় তৈরি'),I.cart,'#0d9488',this.go('sales')],[T('Create Invoice','চালান তৈরি'),I.doc,'#7c3aed',this.go('invoices')],[T('Record Production','উৎপাদন রেকর্ড'),I.production,'#ea580c',this.go('production')],[T('Report Loss','ক্ষতি রিপোর্ট'),I.warn,'#dc2626',this.openLoss]].map((a,i)=>
+        [[T('Add ','যোগ করুন ')+IT,I.box,'#169B62',this.editProduct(null)],[T('Record Purchase','ক্রয় রেকর্ড'),I.purchases,'#2563eb',this.go('purchases')],[T('Create Sale','বিক্রয় তৈরি'),I.cart,'#0d9488',this.go('sales')],[T('Create Invoice','চালান তৈরি'),I.doc,'#7c3aed',this.go('invoices')],...(this.productionEnabled?[[T('Record Production','উৎপাদন রেকর্ড'),I.production,'#ea580c',this.go('production')]]:[]),[T('Report Loss','ক্ষতি রিপোর্ট'),I.warn,'#dc2626',this.openLoss]].map((a,i)=>
           this.h('button',{key:i,onClick:a[3],className:'sf-qa-btn',style:{display:'inline-flex',alignItems:'center',gap:8,padding:'10px 15px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:11,fontSize:13.5,fontWeight:700,color:'var(--text)',cursor:'pointer',boxShadow:'0 1px 2px rgba(16,24,40,.04)'}},
             this.h('span',{className:'sf-qa-ic',style:{width:16,height:16,display:'flex',color:a[2]},dangerouslySetInnerHTML:{__html:a[1]}}),a[0]))),
       // KPI grid
@@ -2819,7 +2826,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       case 'deliveries':content=this.renderDeliveries();break;
       case 'delivery-detail':content=this.renderDeliveryDetail();break;
       case 'purchases':content=this.renderPurchases();break;
-      case 'production':content=this.renderProduction();break;
+      case 'production':content=this.productionEnabled?this.renderProduction():this.renderDashboard();break;
       case 'losses':content=this.renderLosses();break;
       case 'suppliers':content=this.renderSuppliers();break;
       case 'customers':content=this.renderCustomers();break;
@@ -2902,7 +2909,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       {v:'inventory',label:T('Inventory','ইনভেন্টরি'),icon:I.inventory},
       {v:'purchases',label:T('Purchases','ক্রয়'),icon:I.purchases},
       {v:'sales',label:T('Sales','বিক্রয়'),icon:I.sales},
-      {v:'production',label:T('Production','উৎপাদন'),icon:I.production},
+      ...(this.productionEnabled?[{v:'production',label:T('Production','উৎপাদন'),icon:I.production}]:[]),
       {v:'invoices',label:T('Invoices','চালান'),icon:I.invoices},
       {v:'deliveries',label:T('Deliveries','ডেলিভারি'),icon:I.truck,badge:(this.state.data.deliveries||[]).filter(d=>d.status==='pending'||d.status==='picked_up'||d.status==='in_transit').length||undefined},
       {v:'losses',label:T('Losses & Waste','ক্ষতি ও অপচয়'),icon:I.losses,badge:(this.state.data.losses||[]).length||undefined},
@@ -2922,7 +2929,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       {label:'Record Purchase',icon:I.purchases,bg:'#eff6ff',color:'#2563eb',go:this.go('purchases')},
       {label:'Create Sale',icon:I.cart,bg:'#f0fdfa',color:'#0d9488',go:this.go('sales')},
       {label:'Create Invoice',icon:I.doc,bg:'#faf5ff',color:'#7c3aed',go:this.go('invoices')},
-      {label:'Record Production',icon:I.production,bg:'#fff7ed',color:'#ea580c',go:this.go('production')},
+      ...(this.productionEnabled?[{label:'Record Production',icon:I.production,bg:'#fff7ed',color:'#ea580c',go:this.go('production')}]:[]),
       {label:'Create Delivery',icon:I.truck,bg:'#e7f6ef',color:'#169B62',go:this.openCreateDel},
       {label:'Report Loss',icon:I.warn,bg:'#fef2f2',color:'#dc2626',go:this.openLoss},
     ].map(q=>({...q,tint:'color-mix(in srgb, '+q.color+' 16%, transparent)',iconNode:this.icn(q.icon)}));
