@@ -415,6 +415,7 @@ class Component extends DCLogic {
     invoiceStatus: 'all',
     invoicePage: 1,
     delInvoice: null,
+    payingInvoice: null,
     toast: null,
     invFilter: 'all',
     invSearch: '',
@@ -1838,12 +1839,14 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     }catch(e){this.printInvoice(inv)();this.toast('Could not build PDF — opened print view instead')}
   };
   recordInvoicePayment=(inv)=>async()=>{
-    if(!inv)return;
+    if(!inv||this.state.payingInvoice)return;
+    this.setState({payingInvoice:inv.id});
     try{
       await this.api('/api/invoices/'+inv.id,{method:'PUT',body:{status:'paid'}});
       await this.refresh('invoices','/api/invoices');
       this.toast('Payment recorded — invoice marked paid');
     }catch(e){this.toast('Could not record payment — '+e.message)}
+    finally{this.setState({payingInvoice:null})}
   };
   renderInvoices(){
     const I=this.icons,t=this.term,s=this.state;
@@ -1926,7 +1929,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
             this.btn('Edit invoice',{icon:I.edit,onClick:()=>this.openInvBuilder(inv)}),
             this.btn('Download PDF',{icon:I.down,variant:'ghost',onClick:this.downloadInvoicePdf(inv)}),
             this.btn('Print invoice',{icon:I.print,variant:'ghost',onClick:this.printInvoice(inv)}),
-            inv.status!=='paid'?this.btn('Record payment',{icon:I.money,variant:'soft',onClick:this.recordInvoicePayment(inv)}):this.h('div',{style:{fontSize:12.5,color:'#169B62',fontWeight:700,textAlign:'center',padding:'6px 0'}},'✓ Marked paid'),
+            inv.status!=='paid'?this.btn('Record payment',{icon:I.money,variant:'soft',onClick:this.recordInvoicePayment(inv),loading:this.state.payingInvoice===inv.id,loadingLabel:'Recording…'}):this.h('div',{style:{fontSize:12.5,color:'#169B62',fontWeight:700,textAlign:'center',padding:'6px 0'}},'✓ Marked paid'),
             this.btn('Delete invoice',{icon:I.trash,variant:'ghost',onClick:this.askDeleteInvoice(inv)}))],{padding:18}))));
   }
 
