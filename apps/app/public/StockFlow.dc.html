@@ -83,9 +83,41 @@
   .sf-feed-row{opacity:0;animation:sfFeed 9s ease-in-out infinite}
   .sf-h-feat{animation:sfSlideIn .6s cubic-bezier(.22,1,.36,1) both}
   @keyframes sfSlideIn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+  /* ---------- Bhandar360 brand loaders (geometry from the logo, 64x64 viewBox) ---------- */
+  :root{--b360-emerald:#169B62;--b360-deep:#0E5A3D;--b360-charcoal:#1F2937;--b360-track:#E8EAE9}
+  .sf-dark{--b360-charcoal:#f4f6f8;--b360-track:#2b3642}
+  @keyframes b360-spin{to{transform:rotate(360deg)}}
+  @keyframes b360-spin-ease{0%{transform:rotate(0deg)}45%{transform:rotate(200deg)}55%{transform:rotate(205deg)}100%{transform:rotate(360deg)}}
+  @keyframes b360-draw{0%{stroke-dashoffset:120;opacity:.25}35%{stroke-dashoffset:0;opacity:1}75%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:-120;opacity:.25}}
+  @keyframes b360-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.93);opacity:.82}}
+  @keyframes b360-bar{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  @keyframes b360-fill{0%{width:4%}60%{width:72%}100%{width:96%}}
+  @keyframes b360-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .b360-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;background:var(--bg);font-family:'Onest',system-ui,sans-serif}
+  .b360-splash__mark{position:relative;width:120px;height:120px}
+  .b360-splash__mark>svg{position:absolute;inset:0}
+  .b360-splash__ring{animation:b360-spin-ease 1.9s cubic-bezier(.55,0,.45,1) infinite}
+  .b360-splash__letter{color:var(--b360-charcoal);animation:b360-pulse 1.9s ease-in-out infinite}
+  .b360-splash__meta{display:flex;flex-direction:column;align-items:center;gap:22px;animation:b360-in .6s ease-out both}
+  .b360-splash__word{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1;color:var(--b360-charcoal)}
+  .b360-splash__word em{font-style:normal;color:var(--b360-emerald)}
+  .b360-splash__track{width:200px;height:4px;border-radius:99px;background:var(--b360-track);overflow:hidden}
+  .b360-splash__fill{height:100%;border-radius:99px;background:var(--b360-emerald);animation:b360-fill 3.2s cubic-bezier(.25,1,.4,1) infinite}
+  .b360-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;min-height:60vh;padding:60px 0;font-family:'Onest',system-ui,sans-serif}
+  .b360-panel__cap{font-size:14px;font-weight:600;color:var(--muted)}
+  .b360-panel__letter{color:var(--b360-charcoal)}
+  .b360-draw{animation:b360-draw 2.4s ease-in-out infinite;stroke-dasharray:120}
+  .b360-spinner{animation:b360-spin 1.1s linear infinite}
+  .b360-topbar{position:absolute;inset:0;overflow:hidden}
+  .b360-topbar>div{width:40%;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--b360-emerald),#0d9488);animation:b360-bar 1.5s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){
+    .b360-splash__ring,.b360-splash__letter,.b360-splash__fill,.b360-draw,.b360-spinner,.b360-topbar>div{animation:none!important}
+    .b360-draw{stroke-dashoffset:0}
+  }
 </style>
 </helmet>
 <input type="file" accept=".csv,text/csv" id="sfProductCsvInput" onChange="{{ onProductCsvSelected }}" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">
+<sc-if value="{{ isBooting }}" hint-placeholder-val="{{ true }}">{{ bootSplash }}</sc-if>
 <sc-if value="{{ isAuth }}" hint-placeholder-val="{{ true }}">
   <div style="min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr;background:var(--surface)">
     <div style="position:relative;background:linear-gradient(155deg,#0E5A3D 0%,#169B62 55%,#0b4a32 100%);color:#e9f7f0;padding:40px 56px 34px;display:flex;flex-direction:column;overflow:hidden">
@@ -434,6 +466,7 @@ class Component extends DCLogic {
     businesses: [],
     onbMode: 'signup',
     prevBusinessId: null,
+    dataLoading: false,
     data: {
       products: [], suppliers: [], customers: [], purchaseOrders: [], sales: [],
       invoices: [], deliveries: [], losses: [], expenses: [], production: [],
@@ -525,16 +558,21 @@ class Component extends DCLogic {
         catch(e){if(attempt===2)throw e;await new Promise(r=>setTimeout(r,350*(attempt+1)));}
       }
     };
-    const results=await Promise.allSettled(Object.values(endpoints).map(fetchList));
-    const keys=Object.keys(endpoints);
-    const data={...this.state.data};
-    const failed=[];
-    results.forEach((res,i)=>{
-      if(res.status==='fulfilled')data[keys[i]]=res.value;
-      else failed.push(keys[i]);
-    });
-    this.setState({data});
-    if(failed.length)this.toast('Some data didn’t load ('+failed.join(', ')+') — refresh to retry');
+    this.setState({dataLoading:true});
+    try{
+      const results=await Promise.allSettled(Object.values(endpoints).map(fetchList));
+      const keys=Object.keys(endpoints);
+      const data={...this.state.data};
+      const failed=[];
+      results.forEach((res,i)=>{
+        if(res.status==='fulfilled')data[keys[i]]=res.value;
+        else failed.push(keys[i]);
+      });
+      this.setState({data});
+      if(failed.length)this.toast('Some data didn’t load ('+failed.join(', ')+') — refresh to retry');
+    }finally{
+      this.setState({dataLoading:false});
+    }
   }
   async refresh(key,endpoint){
     const r=await this.api(endpoint);
@@ -568,6 +606,43 @@ class Component extends DCLogic {
 
   // ---------- icons ----------
   ic(p){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%">${p}</svg>`}
+
+  // ---------- Bhandar360 brand loaders ----------
+  // The 296° "360" arc, open at the top-right — the gap is stock flowing in/out.
+  B360_RING='M29.91 8.09 A24 24 0 1 0 50.38 16.57';
+  b360B(cls){
+    // The logo's "B": three rounded strokes on the 64x64 grid. Never rotated.
+    return this.h('g',{className:cls,fill:'none',stroke:'currentColor',strokeWidth:5.2,strokeLinecap:'round',strokeLinejoin:'round'},
+      this.h('path',{d:'M24.5 19 V45'}),
+      this.h('path',{d:'M24.5 19 H32.5 a6.5 6.5 0 0 1 0 13 H24.5'}),
+      this.h('path',{d:'M24.5 32 H34 a6.5 6.5 0 0 1 0 13 H24.5'}));
+  }
+  // Inline ring spinner — buttons, table cells. Ring only; inherits currentColor.
+  brandSpinner(size=16,color='currentColor'){
+    return this.h('svg',{width:size,height:size,viewBox:'0 0 64 64',fill:'none',className:'b360-spinner',role:'status','aria-label':'Loading'},
+      this.h('path',{d:this.B360_RING,stroke:color,strokeWidth:size<=20?7:6,strokeLinecap:'round',fill:'none'}));
+  }
+  // Full-page splash — cold app boot / auth handoff.
+  renderSplash(){
+    return this.h('div',{className:'b360-splash'},
+      this.h('div',{className:'b360-splash__mark'},
+        this.h('svg',{viewBox:'0 0 64 64',fill:'none',className:'b360-splash__ring'},
+          this.h('path',{d:this.B360_RING,stroke:'#169B62',strokeWidth:4.4,strokeLinecap:'round',fill:'none'}),
+          this.h('circle',{cx:40.21,cy:9.45,r:2.5,fill:'#169B62'})),
+        this.h('svg',{viewBox:'0 0 64 64',fill:'none',className:'b360-splash__letter'},this.b360B())),
+      this.h('div',{className:'b360-splash__meta'},
+        this.h('div',{className:'b360-splash__word'},'Bhandar',this.h('em',null,'360')),
+        this.h('div',{className:'b360-splash__track'},this.h('div',{className:'b360-splash__fill'}))));
+  }
+  // Draw-on loader for the main content area while a full data load is in flight.
+  renderLoadingPanel(){
+    return this.h('div',{className:'b360-panel'},
+      this.h('svg',{width:104,height:104,viewBox:'0 0 64 64',fill:'none',role:'status','aria-label':'Loading'},
+        this.h('path',{d:this.B360_RING,stroke:'var(--border)',strokeWidth:4.4,strokeLinecap:'round',fill:'none'}),
+        this.h('path',{d:this.B360_RING,stroke:'#169B62',strokeWidth:4.4,strokeLinecap:'round',fill:'none',className:'b360-draw'}),
+        this.b360B('b360-panel__letter')),
+      this.h('div',{className:'b360-panel__cap'},this.tr('Loading your workspace…','আপনার ওয়ার্কস্পেস লোড হচ্ছে…')));
+  }
   get icons(){return {
     dashboard:this.ic('<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>'),
     inventory:this.ic('<path d="M20 7 12 3 4 7v10l8 4 8-4z"/><path d="m4 7 8 4 8-4M12 11v10"/>'),
@@ -1256,7 +1331,7 @@ class Component extends DCLogic {
     const styles={primary:{background:'#169B62',color:'#fff',border:'none',boxShadow:'0 6px 14px -6px rgba(22,155,98,.42)'},ghost:{background:'var(--surface)',color:'var(--text2)',border:'1px solid var(--border)'},danger:{background:'#dc2626',color:'#fff',border:'none'},soft:{background:'color-mix(in srgb, #169B62 16%, transparent)',color:'var(--accent-text)',border:'1px solid color-mix(in srgb, #169B62 32%, transparent)'}}[variant];
     return this.h('button',{onClick:disabled?null:onClick,disabled,style:{display:'inline-flex',alignItems:'center',gap:7,padding:size==='sm'?'7px 12px':'10px 16px',borderRadius:10,fontWeight:700,fontSize:size==='sm'?12.5:13.5,cursor:disabled?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:disabled?.6:1,...styles}},
       loading
-        ?this.h('span',{style:{width:15,height:15,display:'inline-block',border:'2px solid currentColor',borderRightColor:'transparent',borderRadius:'50%',animation:'sfSpin .6s linear infinite'}})
+        ?this.brandSpinner(16,'currentColor')
         :(icon&&this.h('span',{style:{width:16,height:16,display:'flex'},dangerouslySetInnerHTML:{__html:icon}})),
       loading?(loadingLabel||'Processing…'):label)}
   badge(text,color,bg){return this.h('span',{style:{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:20,fontSize:12,fontWeight:700,color,background:'color-mix(in srgb, '+color+' 16%, transparent)',whiteSpace:'nowrap'}},text)}
@@ -1557,7 +1632,7 @@ class Component extends DCLogic {
             this.h('div',{key:'tot',style:{display:'flex',justifyContent:'space-between',padding:'10px 0 4px',marginTop:6,borderTop:'1px dashed var(--border)',fontSize:18,fontWeight:800}},this.h('span',null,'Total'),this.h('span',{style:{color:'#169B62'}},this.bdt(tot))),
             this.h('div',{key:'pm',style:{display:'flex',gap:7,margin:'14px 0'}},['Cash','Card','bKash','Credit'].map((m,i)=>{const on=(this.state.posPay||'Cash')===m;return this.h('button',{key:i,onClick:()=>this.setState({posPay:m}),style:{flex:1,padding:'8px 0',borderRadius:9,fontSize:12,fontWeight:700,cursor:'pointer',border:'1px solid '+(on?'#169B62':'var(--border)'),background:on?'color-mix(in srgb, #169B62 16%, transparent)':'var(--surface)',color:on?'#0E5A3D':'var(--muted)'}},m)})),
             this.h('button',{key:'go',onClick:(cart.length&&!this.state.busy)?this.completeSale:null,disabled:!cart.length||this.state.busy,style:{width:'100%',padding:'13px',borderRadius:11,border:'none',background:cart.length?'#169B62':'var(--border)',color:cart.length?'#fff':'var(--muted)',fontSize:15,fontWeight:800,cursor:(cart.length&&!this.state.busy)?'pointer':'not-allowed',opacity:this.state.busy?.7:1,display:'flex',alignItems:'center',justifyContent:'center',gap:9,boxShadow:cart.length?'0 8px 18px -6px rgba(22,155,98,.42)':'none'}},
-              this.state.busy?this.h('span',{style:{width:16,height:16,display:'inline-block',border:'2px solid #fff',borderRightColor:'transparent',borderRadius:'50%',animation:'sfSpin .6s linear infinite'}}):null,
+              this.state.busy?this.brandSpinner(18,'#fff'):null,
               this.state.busy?'Processing…':('Complete sale · '+this.bdt(tot))))
         ],{overflow:'hidden',padding:0})));
   }
@@ -2606,6 +2681,12 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
   renderView(){
     const v=this.state.view;
     let content;
+    if(this.state.dataLoading){
+      // A full workspace load is in flight (cold boot, business switch) — hold
+      // the main area with the brand draw-on loader rather than flashing stale
+      // or empty data.
+      content=this.renderLoadingPanel();
+    }else
     switch(v){
       case 'dashboard':content=this.renderDashboard();break;
       case 'inventory':content=this.renderInventory();break;
@@ -2628,7 +2709,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     }
     return this.h('div',null,
       this.state.pending>0?this.h('div',{key:'sfprog',style:{position:'fixed',top:0,left:0,right:0,height:3,zIndex:200,overflow:'hidden',pointerEvents:'none'}},
-        this.h('div',{style:{position:'absolute',top:0,height:'100%',width:'45%',borderRadius:'0 3px 3px 0',background:'linear-gradient(90deg,transparent,#169B62,#0d9488,transparent)',animation:'sfProg 1.1s cubic-bezier(.4,0,.2,1) infinite'}})):null,
+        this.h('div',{className:'b360-topbar'},this.h('div',null))):null,
       content,
       this.state.productModal&&this.renderProductModal(),
       this.state.lossModal&&this.renderLossModal(),
@@ -2735,6 +2816,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     const ob=this.onbData;
 
     return {
+      isBooting:s.phase==='booting',
+      bootSplash:this.renderSplash(),
       isAuth:s.phase==='auth',
       authErr:s.authErr,
       authHeroTitle:T('Run your whole business from one dashboard.','একটি ড্যাশবোর্ড থেকে পুরো ব্যবসা চালান।'),
