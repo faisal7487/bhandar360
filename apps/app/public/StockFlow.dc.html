@@ -1130,23 +1130,29 @@ class Component extends DCLogic {
   askDeleteSupplier=(s)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delSup:s,delSupConfirm:''});};
   setDelSupConfirm=(e)=>this.setState({delSupConfirm:e.target.value});
   confirmDeleteSupplier=async()=>{
-    const s=this.state.delSup;if(!s)return;
+    const s=this.state.delSup;if(!s||this.state.busy)return;
     if((this.state.delSupConfirm||'').trim()!==s.name)return;
+    this.setState({busy:true});
     try{
       await this.api('/api/suppliers/'+s._id,{method:'DELETE'});
       await this.refresh('suppliers','/api/suppliers');
       this.setState({delSup:null,delSupConfirm:'',supSel:this.state.supSel.filter(i=>i!==s._id)});
       this.toast('Supplier deleted');
     }catch(e){this.setState({delSup:null,delSupConfirm:''});this.toast('Could not delete supplier — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   setBulkDelSupConfirm=(e)=>this.setState({bulkDelSupConfirm:e.target.value});
   confirmBulkDeleteSuppliers=async()=>{
+    if(this.state.busy)return;
     if((this.state.bulkDelSupConfirm||'').trim().toUpperCase()!=='DELETE')return;
     const ids=this.state.supSel.slice();let ok=0,fail=0;
-    for(const id of ids){try{await this.api('/api/suppliers/'+id,{method:'DELETE'});ok++;}catch(e){fail++;}}
-    await this.refresh('suppliers','/api/suppliers');
-    this.setState({bulkDelSup:false,bulkDelSupConfirm:'',supSel:[]});
-    this.toast(ok+' suppliers deleted'+(fail?' · '+fail+' failed':''));
+    this.setState({busy:true});
+    try{
+      for(const id of ids){try{await this.api('/api/suppliers/'+id,{method:'DELETE'});ok++;}catch(e){fail++;}}
+      await this.refresh('suppliers','/api/suppliers');
+      this.setState({bulkDelSup:false,bulkDelSupConfirm:'',supSel:[]});
+      this.toast(ok+' suppliers deleted'+(fail?' · '+fail+' failed':''));
+    }finally{this.setState({busy:false})}
   };
   openSupPay=(s)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({supPay:{id:s._id,name:s.name,due:s.due||0,amount:s.due?String(s.due):''}});};
   setSupPayAmount=(e)=>this.setState(st=>({supPay:{...st.supPay,amount:e.target.value}}));
@@ -1189,23 +1195,29 @@ class Component extends DCLogic {
   askDeleteCustomer=(c)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delCust:c,delCustConfirm:''});};
   setDelCustConfirm=(e)=>this.setState({delCustConfirm:e.target.value});
   confirmDeleteCustomer=async()=>{
-    const c=this.state.delCust;if(!c)return;
+    const c=this.state.delCust;if(!c||this.state.busy)return;
     if((this.state.delCustConfirm||'').trim()!==c.name)return;
+    this.setState({busy:true});
     try{
       await this.api('/api/customers/'+c._id,{method:'DELETE'});
       await this.refresh('customers','/api/customers');
       this.setState({delCust:null,delCustConfirm:'',custSel:this.state.custSel.filter(i=>i!==c._id)});
       this.toast('Customer deleted');
     }catch(e){this.setState({delCust:null,delCustConfirm:''});this.toast('Could not delete customer — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   setBulkDelCustConfirm=(e)=>this.setState({bulkDelCustConfirm:e.target.value});
   confirmBulkDeleteCustomers=async()=>{
+    if(this.state.busy)return;
     if((this.state.bulkDelCustConfirm||'').trim().toUpperCase()!=='DELETE')return;
     const ids=this.state.custSel.slice();let ok=0,fail=0;
-    for(const id of ids){try{await this.api('/api/customers/'+id,{method:'DELETE'});ok++;}catch(e){fail++;}}
-    await this.refresh('customers','/api/customers');
-    this.setState({bulkDelCust:false,bulkDelCustConfirm:'',custSel:[]});
-    this.toast(ok+' customers deleted'+(fail?' · '+fail+' failed':''));
+    this.setState({busy:true});
+    try{
+      for(const id of ids){try{await this.api('/api/customers/'+id,{method:'DELETE'});ok++;}catch(e){fail++;}}
+      await this.refresh('customers','/api/customers');
+      this.setState({bulkDelCust:false,bulkDelCustConfirm:'',custSel:[]});
+      this.toast(ok+' customers deleted'+(fail?' · '+fail+' failed':''));
+    }finally{this.setState({busy:false})}
   };
   openExpenseModal=()=>this.setState({expenseModal:true,expenseForm:{category:'Rent',amount:'',note:''}});
   setExpenseField=(k)=>(e)=>this.setState(s=>({expenseForm:{...s.expenseForm,[k]:e.target.value}}));
@@ -2531,8 +2543,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes ',this.h('strong',null,s.name),' from your suppliers. Purchase orders that reference this vendor keep their data. This cannot be undone.'),
       this.field('Type "'+s.name+'" to confirm',{value:val,onChange:this.setDelSupConfirm,ph:s.name}));
     return this.modalShell('Delete supplier','This action is permanent and cannot be undone.',body,
-      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({delSup:null,delSupConfirm:''})}),
-       this.btn('Delete supplier',{icon:this.icons.trash,variant:'danger',disabled:!matches,onClick:this.confirmDeleteSupplier})],520);
+      [this.btn('Cancel',{variant:'ghost',disabled:this.state.busy,onClick:()=>this.setState({delSup:null,delSupConfirm:''})}),
+       this.btn('Delete supplier',{icon:this.icons.trash,variant:'danger',disabled:!matches,loading:this.state.busy,loadingLabel:'Deleting…',onClick:this.confirmDeleteSupplier})],520);
   }
   renderBulkDeleteSupConfirm(){
     const n=this.state.supSel.length;
@@ -2542,8 +2554,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes the ',this.h('strong',null,n+' selected supplier'+(n===1?'':'s')),'. This cannot be undone.'),
       this.field('Type DELETE to confirm',{value:val,onChange:this.setBulkDelSupConfirm,ph:'DELETE'}));
     return this.modalShell('Delete '+n+' supplier'+(n===1?'':'s'),'This action is permanent and cannot be undone.',body,
-      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkDelSup:false,bulkDelSupConfirm:''})}),
-       this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,onClick:this.confirmBulkDeleteSuppliers})],520);
+      [this.btn('Cancel',{variant:'ghost',disabled:this.state.busy,onClick:()=>this.setState({bulkDelSup:false,bulkDelSupConfirm:''})}),
+       this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,loading:this.state.busy,loadingLabel:'Deleting…',onClick:this.confirmBulkDeleteSuppliers})],520);
   }
   renderSupPayModal(){
     const p=this.state.supPay||{};
@@ -2581,8 +2593,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes ',this.h('strong',null,c.name),' from your customers. Sales and invoices that reference this customer keep their data. This cannot be undone.'),
       this.field('Type "'+c.name+'" to confirm',{value:val,onChange:this.setDelCustConfirm,ph:c.name}));
     return this.modalShell('Delete customer','This action is permanent and cannot be undone.',body,
-      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({delCust:null,delCustConfirm:''})}),
-       this.btn('Delete customer',{icon:this.icons.trash,variant:'danger',disabled:!matches,onClick:this.confirmDeleteCustomer})],520);
+      [this.btn('Cancel',{variant:'ghost',disabled:this.state.busy,onClick:()=>this.setState({delCust:null,delCustConfirm:''})}),
+       this.btn('Delete customer',{icon:this.icons.trash,variant:'danger',disabled:!matches,loading:this.state.busy,loadingLabel:'Deleting…',onClick:this.confirmDeleteCustomer})],520);
   }
   renderBulkDeleteCustConfirm(){
     const n=this.state.custSel.length;
@@ -2592,8 +2604,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.h('div',{style:{padding:14,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,fontSize:13.5,color:'#991b1b',marginBottom:16,lineHeight:1.5}},'This permanently removes the ',this.h('strong',null,n+' selected customer'+(n===1?'':'s')),'. This cannot be undone.'),
       this.field('Type DELETE to confirm',{value:val,onChange:this.setBulkDelCustConfirm,ph:'DELETE'}));
     return this.modalShell('Delete '+n+' customer'+(n===1?'':'s'),'This action is permanent and cannot be undone.',body,
-      [this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkDelCust:false,bulkDelCustConfirm:''})}),
-       this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,onClick:this.confirmBulkDeleteCustomers})],520);
+      [this.btn('Cancel',{variant:'ghost',disabled:this.state.busy,onClick:()=>this.setState({bulkDelCust:false,bulkDelCustConfirm:''})}),
+       this.btn('Delete '+n,{icon:this.icons.trash,variant:'danger',disabled:!ok,loading:this.state.busy,loadingLabel:'Deleting…',onClick:this.confirmBulkDeleteCustomers})],520);
   }
   renderExpenseModal(){
     const f=this.state.expenseForm||{};
