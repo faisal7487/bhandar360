@@ -183,6 +183,14 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   price DOUBLE PRECISION NOT NULL DEFAULT 0
 );
 
+-- A POS sale to a walk-in customer captures a name/phone inline instead of
+-- creating a customer record; every sale also auto-generates a linked invoice.
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sale_id INTEGER REFERENCES sales(id);
+
 CREATE TABLE IF NOT EXISTS deliveries (
   id SERIAL PRIMARY KEY,
   business_id INTEGER NOT NULL REFERENCES businesses(id),

@@ -81,10 +81,11 @@ async function newTenant(prefix) {
 // don't accumulate junk businesses in the shared database.
 async function deleteTenant(businessId) {
   await db.prepare('DELETE FROM stock_movements WHERE business_id = ?').run(businessId);
-  await db.prepare('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE business_id = ?)').run(businessId);
-  await db.prepare('DELETE FROM sales WHERE business_id = ?').run(businessId);
+  // invoices.sale_id references sales, so invoices go before sales.
   await db.prepare('DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE business_id = ?)').run(businessId);
   await db.prepare('DELETE FROM invoices WHERE business_id = ?').run(businessId);
+  await db.prepare('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE business_id = ?)').run(businessId);
+  await db.prepare('DELETE FROM sales WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM purchase_order_items WHERE po_id IN (SELECT id FROM purchase_orders WHERE business_id = ?)').run(businessId);
   await db.prepare('DELETE FROM purchase_orders WHERE business_id = ?').run(businessId);
   await db.prepare('DELETE FROM losses WHERE business_id = ?').run(businessId);

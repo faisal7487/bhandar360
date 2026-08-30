@@ -413,6 +413,9 @@ class Component extends DCLogic {
     lossModal: false,
     lossForm: null,
     cart: [],
+    posCustomer: '',       // '' = walk-in, else a customer id
+    posWalkinName: '',
+    posWalkinPhone: '',
     invoiceItems: [],
     invoiceSearch: '',
     invoiceStatus: 'all',
@@ -1350,15 +1353,19 @@ class Component extends DCLogic {
   completeSale=async()=>{
     if(this.state.busy)return;
     const cart=this.state.cart;
-    const n=cart.length;
     const lines=cart.map(c=>({product_id:c.id,name:c.name,qty:c.qty,price:c.sell}));
     const branchId=this.state.posBranch||(this.branches[0]&&this.branches[0].id);
+    const cid=this.state.posCustomer;
+    const body={lines,method:this.state.posPay||'Cash',branch_id:branchId};
+    if(cid)body.customer_id=Number(cid);
+    else{body.customer_name=(this.state.posWalkinName||'').trim();body.customer_phone=(this.state.posWalkinPhone||'').trim();}
     this.setState({busy:true});
     try{
-      await this.api('/api/sales',{method:'POST',body:{lines,method:this.state.posPay||'Cash',branch_id:branchId}});
-      await Promise.all([this.refresh('sales','/api/sales'),this.refresh('products','/api/products')]);
-      this.setState({cart:[]});
-      this.toast('Sale completed \u2014 '+n+' item(s), stock updated');
+      const r=await this.api('/api/sales',{method:'POST',body});
+      await Promise.all([this.refresh('sales','/api/sales'),this.refresh('products','/api/products'),this.refresh('invoices','/api/invoices')]);
+      this.setState({cart:[],posWalkinName:'',posWalkinPhone:''});
+      const inv=r&&r.item&&r.item.invoice_no;
+      this.toast(inv?('Sale completed \u2014 invoice '+inv+' generated'):'Sale completed \u2014 stock updated');
     }catch(e){this.toast('Could not complete sale \u2014 '+e.message)}
     finally{this.setState({busy:false})}
   };
@@ -1818,6 +1825,14 @@ class Component extends DCLogic {
           this.branches.length>0&&this.h('div',{key:'br',style:{padding:'12px 20px 0'}},
             this.h('label',{style:{display:'block',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',marginBottom:6}},'Branch'),
             this.h('select',{value:this.state.posBranch||this.branches[0].id,onChange:e=>this.setState({posBranch:Number(e.target.value)}),style:this.inpStyle},this.branches.map((b,i)=>this.h('option',{key:i,value:b.id},b.name)))),
+          this.h('div',{key:'cust',style:{padding:'12px 20px 0'}},
+            this.h('label',{style:{display:'block',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',marginBottom:6}},'Customer'),
+            this.h('select',{value:this.state.posCustomer||'',onChange:e=>this.setState({posCustomer:e.target.value}),style:{...this.inpStyle,appearance:'none'}},
+              this.h('option',{value:''},'Walk-in customer'),
+              this.customers.map((c,i)=>this.h('option',{key:i,value:String(c._id)},c.name))),
+            !this.state.posCustomer&&this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:8}},
+              this.h('input',{value:this.state.posWalkinName||'',onChange:e=>this.setState({posWalkinName:e.target.value}),placeholder:'Name (optional)',style:this.inpStyle}),
+              this.h('input',{value:this.state.posWalkinPhone||'',onChange:e=>this.setState({posWalkinPhone:e.target.value}),placeholder:'Phone (optional)',style:this.inpStyle}))),
           cart.length===0
             ?this.h('div',{key:'e',style:{padding:'56px 24px',textAlign:'center'}},this.h('div',{style:{width:56,height:56,borderRadius:14,background:'var(--surface-2)',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'},dangerouslySetInnerHTML:{__html:I.cart}}),this.h('div',{style:{fontSize:14.5,fontWeight:700,color:'var(--text2)'}},'Cart is empty'),this.h('div',{style:{fontSize:13,color:'var(--muted)',marginTop:4}},'Tap a product to start a sale'))
             :this.h('div',{key:'items',style:{maxHeight:300,overflowY:'auto',padding:'8px 12px'}},cart.map((c,i)=>

@@ -15,7 +15,10 @@ async function withItems(inv) {
 router.get('/', ah(async (req, res) => {
   const rows = await db
     .prepare(
-      `SELECT invoices.*, customers.name AS customer_name, branches.name AS branch_name FROM invoices
+      `SELECT invoices.*,
+              COALESCE(customers.name, invoices.customer_name) AS customer_name,
+              branches.name AS branch_name
+       FROM invoices
        LEFT JOIN customers ON customers.id = invoices.customer_id
        LEFT JOIN branches ON branches.id = invoices.branch_id
        WHERE invoices.business_id = ? ORDER BY invoices.id DESC`
