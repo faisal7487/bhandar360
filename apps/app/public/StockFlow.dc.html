@@ -397,6 +397,9 @@ class Component extends DCLogic {
     authMode: 'signin',       // 'signin' | 'signup'
     remember: true,
     authErr: '',
+    authBusy: false,
+    onbBusy: false,
+    lossDeciding: null,
     onbStep: 1,
     industry: 'pharmacy',
     view: 'dashboard',
@@ -963,13 +966,15 @@ class Component extends DCLogic {
   };
   askDeleteProduct=(p)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState({delProduct:p,quickAddOpen:false});};
   confirmDeleteProduct=async()=>{
-    const p=this.state.delProduct;if(!p)return;
+    const p=this.state.delProduct;if(!p||this.state.busy)return;
+    this.setState({busy:true});
     try{
       await this.api('/api/products/'+p.id,{method:'DELETE'});
       await this.refresh('products','/api/products');
       this.setState({delProduct:null,productModal:null,productForm:null,selectedProduct:null,view:this.state.view==='inventory-detail'?'inventory':this.state.view});
       this.toast(this.term.item+' deleted');
     }catch(e){this.setState({delProduct:null});this.toast('Could not delete '+this.term.item.toLowerCase()+' — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   toggleInvSel=(id)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState(s=>{const set=new Set(s.invSelected);set.has(id)?set.delete(id):set.add(id);return{invSelected:[...set]};});};
   toggleInvSelAll=(ids)=>(e)=>{if(e&&e.stopPropagation)e.stopPropagation();this.setState(s=>{
@@ -978,12 +983,16 @@ class Component extends DCLogic {
   });};
   clearInvSel=()=>this.setState({invSelected:[]});
   runBulk=async(fn,verb)=>{
+    if(this.state.busy)return;
     const ids=this.state.invSelected.slice();
     let ok=0,fail=0;
-    for(const id of ids){try{await fn(id);ok++;}catch(e){fail++;}}
-    await this.refresh('products','/api/products');
-    this.setState({invSelected:[],bulkEdit:null,bulkDelOpen:false});
-    this.toast(ok+' '+this.term.items.toLowerCase()+' '+verb+(fail?' · '+fail+' skipped':''));
+    this.setState({busy:true});
+    try{
+      for(const id of ids){try{await fn(id);ok++;}catch(e){fail++;}}
+      await this.refresh('products','/api/products');
+      this.setState({invSelected:[],bulkEdit:null,bulkDelOpen:false});
+      this.toast(ok+' '+this.term.items.toLowerCase()+' '+verb+(fail?' · '+fail+' skipped':''));
+    }finally{this.setState({busy:false})}
   };
   confirmBulkDelete=()=>this.runBulk((id)=>this.api('/api/products/'+id,{method:'DELETE'}),'deleted');
   openBulkEdit=()=>this.setState({bulkEdit:{cat:'',brand:'',supplier:'',warehouse:'',unit:'',status:'',cost:'',sell:'',min:''}});
@@ -1006,21 +1015,27 @@ class Component extends DCLogic {
   openLoss=()=>this.setState({lossModal:true,lossForm:{product_id:(this.products[0]||{}).id,branch_id:(this.branches[0]||{}).id,qty:'',reason:'Expired',notes:''},quickAddOpen:false});
   setLossField=(k)=>(e)=>this.setState(s=>({lossForm:{...s.lossForm,[k]:e.target.value}}));
   decideLoss=(id,status)=>async()=>{
+    if(this.state.lossDeciding)return;
+    this.setState({lossDeciding:id+':'+status});
     try{
       await this.api('/api/losses/'+id,{method:'PUT',body:{status}});
       await Promise.all([this.refresh('losses','/api/losses'),this.refresh('products','/api/products')]);
       this.toast(status==='approved'?'Loss approved — stock adjusted':'Loss rejected');
     }catch(e){this.toast('Could not update loss — '+e.message)}
+    finally{this.setState({lossDeciding:null})}
   };
   saveLoss=async()=>{
+    if(this.state.busy)return;
     const f=this.state.lossForm||{};
     if(!f.qty){this.toast('Enter a quantity');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/losses',{method:'POST',body:{product_id:f.product_id,branch_id:f.branch_id,qty:parseFloat(f.qty)||0,reason:f.reason,notes:f.notes}});
       await this.refresh('losses','/api/losses');
       this.setState({lossModal:false,lossForm:null});
       this.toast('Loss submitted for approval');
     }catch(e){this.toast('Could not record loss — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   productCsvHeaders=['Name','SKU','Category','Brand','Generic','Manufacturer','Form','Strength','Unit','Cost Price','Sale Price','Stock Qty','Reorder Level','Batch No','Expiry Date (YYYY-MM-DD)','Supplier'];
   downloadProductTemplate=()=>{
@@ -1088,13 +1103,15 @@ class Component extends DCLogic {
     return m;
   };
   confirmImportSkipDuplicates=async()=>{
-    const c=this.state.importConfirm;if(!c)return;
+    const c=this.state.importConfirm;if(!c||this.state.busy)return;
+    this.setState({busy:true});
     try{
       const r=await this.api('/api/products/import',{method:'POST',body:{items:c.items,skipDuplicates:true}});
       await this.refresh('products','/api/products');
       this.setState({importConfirm:null});
       this.toast(this.importedMsg(r));
     }catch(e){this.setState({importConfirm:null});this.toast('Could not import CSV — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openProductImport=()=>{
     const el=document.getElementById('sfProductCsvInput');
@@ -1222,26 +1239,32 @@ class Component extends DCLogic {
   openExpenseModal=()=>this.setState({expenseModal:true,expenseForm:{category:'Rent',amount:'',note:''}});
   setExpenseField=(k)=>(e)=>this.setState(s=>({expenseForm:{...s.expenseForm,[k]:e.target.value}}));
   saveExpense=async()=>{
+    if(this.state.busy)return;
     const f=this.state.expenseForm||{};
     if(!f.amount){this.toast('Enter an amount');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/expenses',{method:'POST',body:{category:f.category,amount:parseFloat(f.amount)||0,note:f.note}});
       await this.refresh('expenses','/api/expenses');
       this.setState({expenseModal:false,expenseForm:null});
       this.toast('Expense recorded');
     }catch(e){this.toast('Could not record expense — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openTeamModal=()=>this.setState({teamModal:true,teamForm:{name:'',email:'',role:'Manager'}});
   setTeamField=(k)=>(e)=>this.setState(s=>({teamForm:{...s.teamForm,[k]:e.target.value}}));
   saveTeam=async()=>{
+    if(this.state.busy)return;
     const f=this.state.teamForm||{};
     if(!f.name||!f.email){this.toast('Enter a name and email');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/team',{method:'POST',body:{name:f.name,email:f.email,role:f.role,status:'pending'}});
       await this.refresh('team','/api/team');
       this.setState({teamModal:false,teamForm:null});
       this.toast('Invite sent to '+f.email);
     }catch(e){this.toast('Could not send invite — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   setBusinessField=(k)=>(e)=>this.setState(s=>({businessForm:{...s.businessForm,[k]:e.target.value}}));
   currencyOpts=['BDT (৳)','USD ($)','INR (₹)','EUR (€)'];
@@ -1262,6 +1285,8 @@ class Component extends DCLogic {
     const taxLabel=f.tax!==undefined?f.tax:this.taxLabelFor(biz.taxRate);
     const timezone=f.timezone!==undefined?f.timezone:biz.timezone;
     const industryKey=this.industryKeyFor(industryLabel);
+    if(this.state.busy)return;
+    this.setState({busy:true});
     try{
       await this.api('/api/onboarding',{method:'POST',body:{
         businessName:name,industry:industryKey,currency:this.currencyCode(currencyLabel),
@@ -1270,11 +1295,14 @@ class Component extends DCLogic {
       this.setState(s=>({industry:industryKey,businessForm:null,me:s.me?{...s.me,business:{...s.me.business,name,industry:industryKey,currency:this.currencyCode(currencyLabel),taxRate:this.taxRateFor(taxLabel),timezone}}:s.me}));
       this.toast('Business profile saved');
     }catch(e){this.toast('Could not save business profile — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openDeleteBiz=()=>this.setState({deleteBizModal:true,deleteBizConfirm:''});
   setDeleteBizConfirm=(e)=>this.setState({deleteBizConfirm:e.target.value});
   confirmDeleteBusiness=async()=>{
+    if(this.state.busy)return;
     const biz=(this.state.me&&this.state.me.business)||{};
+    this.setState({busy:true});
     try{
       await this.api('/api/businesses/'+biz.id,{method:'DELETE'});
       const me=await this.api('/api/auth/me');
@@ -1284,30 +1312,37 @@ class Component extends DCLogic {
       if(onboarded)await this.loadAllData();
       this.toast(biz.name+' was removed');
     }catch(e){this.toast('Could not remove business — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openBranchModal=()=>this.setState({branchModal:true,branchForm:{name:'',type:'Retail outlet',address:''}});
   setBranchField=(k)=>(e)=>this.setState(s=>({branchForm:{...s.branchForm,[k]:e.target.value}}));
   saveBranch=async()=>{
+    if(this.state.busy)return;
     const f=this.state.branchForm||{};
     if(!f.name){this.toast('Enter a branch name');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/branches',{method:'POST',body:{name:f.name,type:f.type,address:f.address}});
       await this.refresh('branches','/api/branches');
       this.setState({branchModal:false,branchForm:null});
       this.toast('Branch added');
     }catch(e){this.toast('Could not add branch — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openWarehouseModal=()=>this.setState({warehouseModal:true,warehouseForm:{name:'',type:'Storage',address:''}});
   setWarehouseField=(k)=>(e)=>this.setState(s=>({warehouseForm:{...s.warehouseForm,[k]:e.target.value}}));
   saveWarehouse=async()=>{
+    if(this.state.busy)return;
     const f=this.state.warehouseForm||{};
     if(!f.name){this.toast('Enter a warehouse name');return}
+    this.setState({busy:true});
     try{
       await this.api('/api/warehouses',{method:'POST',body:{name:f.name,type:f.type,address:f.address}});
       await this.refresh('warehouses','/api/warehouses');
       this.setState({warehouseModal:false,warehouseForm:null});
       this.toast('Warehouse added');
     }catch(e){this.toast('Could not add warehouse — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   addToCart=(p)=>()=>{if(p.stock===0)return;this.setState(s=>{const e=s.cart.find(c=>c.id===p.id);if(e)return{cart:s.cart.map(c=>c.id===p.id?{...c,qty:c.qty+1}:c)};return{cart:[...s.cart,{...p,qty:1}]}})};
   cartQty=(id,d)=>()=>this.setState(s=>({cart:s.cart.map(c=>c.id===id?{...c,qty:Math.max(0,c.qty+d)}:c).filter(c=>c.qty>0)}));
@@ -1355,18 +1390,22 @@ class Component extends DCLogic {
   setInvFilter=(f)=>()=>this.setState({invFilter:f,invPage:1});
   setInvPage=(n)=>()=>this.setState({invPage:n});
   onboNext=async()=>{
+    if(this.state.onbBusy)return;
     const n=this.state.onbStep;
     if(n===1){
       const ob=this.state.obForm;
       const name=(ob.name||'').trim(),email=(ob.email||'').trim(),pw=(ob.pw||'').trim();
       if(!name||!email||!pw){this.toast('Fill in your name, email and password');return}
+      this.setState({onbBusy:true});
       try{
         const r=await this.api('/api/auth/signup',{method:'POST',body:{name,email,password:pw}});
         this.setState({onbStep:2,me:r.user});
       }catch(e){this.toast(e.message)}
+      finally{this.setState({onbBusy:false})}
       return;
     }
     if(n>=8){
+      this.setState({onbBusy:true});
       const ob=this.state.obForm;
       const branches=(ob.branches&&ob.branches.length?ob.branches:[{name:'Main branch',type:'Retail outlet',location:''}]).filter(b=>b.name);
       const body={
@@ -1388,15 +1427,18 @@ class Component extends DCLogic {
         await Promise.all([this.loadAllData(),this.loadBusinesses()]);
         this.toast('Welcome to Bhandar360! Setup complete.');
       }catch(e){this.toast('Could not finish setup \u2014 '+e.message)}
+      finally{this.setState({onbBusy:false})}
       return;
     }
     this.setState({onbStep:n+1});
   };
   onboBack=async()=>{
+    if(this.state.onbBusy)return;
     const n=this.state.onbStep;
     if(this.state.onbMode==='addBusiness'&&n<=2){
       const draftId=this.state.me&&this.state.me.business&&this.state.me.business.id;
       const prevId=this.state.prevBusinessId;
+      this.setState({onbBusy:true});
       try{
         if(draftId)await this.api('/api/businesses/'+draftId,{method:'DELETE'});
         if(prevId){
@@ -1406,22 +1448,28 @@ class Component extends DCLogic {
           await Promise.all([this.loadAllData(),this.loadBusinesses()]);
         }
       }catch(e){this.toast('Could not cancel \u2014 '+e.message)}
+      finally{this.setState({onbBusy:false})}
       return;
     }
     if(n<=1){this.setState({phase:'auth'});return}
     this.setState({onbStep:n-1});
   };
   openAddBusiness=async()=>{
+    if(this.state.busy)return;
     const prevId=this.state.me&&this.state.me.business&&this.state.me.business.id;
+    this.setState({busy:true});
     try{
       await this.api('/api/businesses',{method:'POST',body:{name:'New Business',industry:'pharmacy'}});
       const me=await this.api('/api/auth/me');
       this.setState({me:me.user,industry:'pharmacy',phase:'onboarding',onbStep:2,onbMode:'addBusiness',prevBusinessId:prevId,bizOpen:false,obForm:{name:'',email:'',pw:'',bizName:'',address:'',branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]}});
       await this.loadBusinesses();
     }catch(e){this.toast('Could not start setup \u2014 '+e.message)}
+    finally{this.setState({busy:false})}
   };
   switchBusiness=(bizId)=>async()=>{
     if(this.state.me&&this.state.me.business&&this.state.me.business.id===bizId){this.setState({bizOpen:false});return}
+    if(this.state.busy)return;
+    this.setState({busy:true});
     try{
       const r=await this.api('/api/businesses/'+bizId+'/switch',{method:'POST'});
       const me=await this.api('/api/auth/me');
@@ -1429,6 +1477,7 @@ class Component extends DCLogic {
       this.setState({me:me.user,industry:r.business.industry,bizOpen:false,phase:onboarded?'app':'onboarding',view:'dashboard',onbStep:onboarded?1:2,onbMode:onboarded?'signup':'addBusiness',prevBusinessId:onboarded?null:this.state.me.business.id});
       if(onboarded){await this.loadAllData();this.toast('Switched to '+r.business.name)}
     }catch(e){this.toast('Could not switch business \u2014 '+e.message)}
+    finally{this.setState({busy:false})}
   };
   onboIndustry=(k)=>()=>this.setState({industry:k});
   setObField=(k)=>(e)=>this.setState(s=>({obForm:{...s.obForm,[k]:e.target.value}}));
@@ -1436,9 +1485,11 @@ class Component extends DCLogic {
   removeOnbBranch=(i)=>()=>this.setState(s=>({obForm:{...s.obForm,branches:(s.obForm.branches||[]).filter((_,j)=>j!==i)}}));
   setOnbBranchField=(i,k)=>(e)=>this.setState(s=>({obForm:{...s.obForm,branches:(s.obForm.branches||[]).map((b,j)=>j===i?{...b,[k]:e.target.value}:b)}}));
   signIn=async()=>{
+    if(this.state.authBusy)return;
     const em=(this._email||'').trim(),pw=(this._pw||'').trim();
     if(!em||!pw){this.setState({authErr:this.tr('Enter your email and password','ইমেইল ও পাসওয়ার্ড দিন')});return}
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){this.setState({authErr:this.tr('Enter a valid email address','সঠিক ইমেইল দিন')});return}
+    this.setState({authBusy:true});
     try{
       const r=await this.api('/api/auth/signin',{method:'POST',body:{email:em,password:pw}});
       const onboarded=r.user.business&&r.user.business.onboarded;
@@ -1446,6 +1497,7 @@ class Component extends DCLogic {
       await this.loadBusinesses();
       if(onboarded){await this.loadAllData();this.toast(this.tr('Signed in — welcome back!','সাইন ইন সফল — স্বাগতম!'))}
     }catch(e){this.setState({authErr:e.message})}
+    finally{this.setState({authBusy:false})}
   };
   goSignup=()=>{this.setState({phase:'onboarding',onbStep:1,authErr:''})};
   signOut=async()=>{try{await this.api('/api/auth/signout',{method:'POST'})}catch(e){}this.setState({phase:'auth',me:null})};
@@ -2128,7 +2180,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           byReason.map((r,i)=>this.h('div',{key:i,style:{marginBottom:13}},this.h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:5}},this.h('span',{style:{fontWeight:600}},r[0]),this.h('span',{style:{fontWeight:700}},this.bdt(r[1]))),this.h('div',{style:{height:8,background:'var(--surface-2)',borderRadius:6}},this.h('div',{style:{height:'100%',width:(r[1]/maxReason*100)+'%',background:r[2],borderRadius:6}}))))],{padding:20}),
         this.table(['Ref','Product','Qty','Reason','Value','Branch','Reported by',{t:'Status'},{t:'',align:'right'}],
           this.losses.length===0?[this.h('tr',{key:'e'},this.td(this.h('div',{style:{padding:'32px 0',textAlign:'center',color:'var(--muted)'}},'No losses reported yet.'),{}))]:
-          this.losses.map((l,i)=>this.h('tr',{key:i,'data-hover':''},this.td(this.h('span',{style:{fontWeight:700}},l.id)),this.td(l.product),this.td(l.qty,{mono:true}),this.td(this.badge(l.reason,'#475569','var(--surface-2)')),this.td(this.bdt(l.value),{mono:true,bold:true,color:'#dc2626'}),this.td(l.branch,{color:'var(--muted)'}),this.td(l.by,{color:'var(--muted)'}),this.td(this.badge(l.status,this.statusColor(l.status).c,this.statusColor(l.status).b)),this.td(l.status==='Pending'?this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},this.btn('Approve',{size:'sm',variant:'soft',onClick:this.decideLoss(l._id,'approved')}),this.btn('Reject',{size:'sm',variant:'ghost',onClick:this.decideLoss(l._id,'rejected')})):'',{align:'right'}))))));
+          this.losses.map((l,i)=>this.h('tr',{key:i,'data-hover':''},this.td(this.h('span',{style:{fontWeight:700}},l.id)),this.td(l.product),this.td(l.qty,{mono:true}),this.td(this.badge(l.reason,'#475569','var(--surface-2)')),this.td(this.bdt(l.value),{mono:true,bold:true,color:'#dc2626'}),this.td(l.branch,{color:'var(--muted)'}),this.td(l.by,{color:'var(--muted)'}),this.td(this.badge(l.status,this.statusColor(l.status).c,this.statusColor(l.status).b)),this.td(l.status==='Pending'?this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},this.btn('Approve',{size:'sm',variant:'soft',onClick:this.decideLoss(l._id,'approved'),loading:this.state.lossDeciding===l._id+':approved',loadingLabel:'…',disabled:!!this.state.lossDeciding}),this.btn('Reject',{size:'sm',variant:'ghost',onClick:this.decideLoss(l._id,'rejected'),loading:this.state.lossDeciding===l._id+':rejected',loadingLabel:'…',disabled:!!this.state.lossDeciding})):'',{align:'right'}))))));
   }
 
   // ============ SIMPLE TABLE VIEWS ============
@@ -2448,7 +2500,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.pageHead('Settings','Business profile, roles, permissions and subscription.',null),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}},
         this.card([
-          this.h('div',{key:'h',style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},this.h('div',{style:{fontSize:16,fontWeight:800}},'Business profile'),this.btn('Save changes',{icon:this.icons.check,size:'sm',onClick:this.saveBusinessProfile})),
+          this.h('div',{key:'h',style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},this.h('div',{style:{fontSize:16,fontWeight:800}},'Business profile'),this.btn('Save changes',{icon:this.icons.check,size:'sm',onClick:this.saveBusinessProfile,loading:this.state.busy,loadingLabel:'Saving…'})),
           this.h('div',{key:'g',style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
             this.field('Business name',{value:bf.name!==undefined?bf.name:biz.name,onChange:bsf('name'),span:2}),
             this.field('Industry',{type:'select',value:bf.industry!==undefined?bf.industry:this.industryLabelFor(biz.industry),onChange:bsf('industry'),opts:this.industryOpts}),
@@ -2522,7 +2574,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Branch',{type:'select',value:(this.branches.find(b=>b.id===lf.branch_id)||{}).name,onChange:e=>{const b=this.branches.find(x=>x.name===e.target.value);this.setState(s=>({lossForm:{...s.lossForm,branch_id:b&&b.id}}))},opts:this.branches.map(b=>b.name),span:2}),
       this.field('Notes',{type:'textarea',value:lf.notes,onChange:sf('notes'),ph:'Add context for the approver…',span:2}),
       this.h('div',{key:'up',style:{gridColumn:'span 2'}},this.h('label',{style:{display:'block',fontSize:12.5,fontWeight:600,color:'var(--text2)',marginBottom:6}},'Photo / attachment'),this.h('div',{style:{border:'2px dashed var(--border)',borderRadius:12,padding:'22px',textAlign:'center',color:'var(--muted)',fontSize:13}},this.h('span',{style:{width:24,height:24,display:'inline-flex',marginBottom:4},dangerouslySetInnerHTML:{__html:this.icons.upload}}),this.h('div',null,'Drop a photo or click to upload'))));
-    return this.modalShell('Report a loss','Record write-offs — will be sent for approval.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Submit for approval',{variant:'danger',onClick:this.saveLoss})],640);
+    return this.modalShell('Report a loss','Record write-offs — will be sent for approval.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Submit for approval',{variant:'danger',onClick:this.saveLoss,loading:this.state.busy,loadingLabel:'Submitting…'})],640);
   }
   renderSupplierModal(){
     const f=this.state.supplierForm||{};
@@ -2614,7 +2666,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Category',{type:'select',value:f.category,onChange:sf('category'),opts:['Rent','Utilities','Payroll','Logistics','Maintenance','Marketing','Other']}),
       this.field('Amount',{value:f.amount,onChange:sf('amount'),ph:'0',req:true}),
       this.field('Description',{value:f.note,onChange:sf('note'),ph:'e.g. Monthly shop rent',span:2}));
-    return this.modalShell('Add expense','Record an operating cost.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save expense',{icon:this.icons.check,onClick:this.saveExpense})],560);
+    return this.modalShell('Add expense','Record an operating cost.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save expense',{icon:this.icons.check,onClick:this.saveExpense,loading:this.state.busy,loadingLabel:'Saving…'})],560);
   }
   renderTeamModal(){
     const f=this.state.teamForm||{};
@@ -2623,7 +2675,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Full name',{value:f.name,onChange:sf('name'),req:true}),
       this.field('Email address',{value:f.email,onChange:sf('email'),req:true}),
       this.field('Role',{type:'select',value:f.role,onChange:sf('role'),opts:['Manager','Cashier','Inventory Officer','Accountant']}));
-    return this.modalShell('Invite team member','Send an invite with role-based access.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Send invite',{icon:this.icons.check,onClick:this.saveTeam})],560);
+    return this.modalShell('Invite team member','Send an invite with role-based access.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Send invite',{icon:this.icons.check,onClick:this.saveTeam,loading:this.state.busy,loadingLabel:'Sending…'})],560);
   }
   renderBranchModal(){
     const f=this.state.branchForm||{};
@@ -2632,7 +2684,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Branch name',{value:f.name,onChange:sf('name'),req:true,span:2}),
       this.field('Type',{type:'select',value:f.type,onChange:sf('type'),opts:['Retail outlet','Warehouse','Kitchen','Storage']}),
       this.field('Location',{value:f.address,onChange:sf('address')}));
-    return this.modalShell('Add branch','A sales location for this business.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save branch',{icon:this.icons.check,onClick:this.saveBranch})],560);
+    return this.modalShell('Add branch','A sales location for this business.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save branch',{icon:this.icons.check,onClick:this.saveBranch,loading:this.state.busy,loadingLabel:'Saving…'})],560);
   }
   renderWarehouseModal(){
     const f=this.state.warehouseForm||{};
@@ -2641,7 +2693,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Warehouse name',{value:f.name,onChange:sf('name'),req:true,span:2}),
       this.field('Type',{type:'select',value:f.type,onChange:sf('type'),opts:['Storage','Cold storage','Fulfillment']}),
       this.field('Location',{value:f.address,onChange:sf('address')}));
-    return this.modalShell('Add warehouse','A stock storage location for this business.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save warehouse',{icon:this.icons.check,onClick:this.saveWarehouse})],560);
+    return this.modalShell('Add warehouse','A stock storage location for this business.',body,[this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),this.btn('Save warehouse',{icon:this.icons.check,onClick:this.saveWarehouse,loading:this.state.busy,loadingLabel:'Saving…'})],560);
   }
   renderDeleteBizModal(){
     const biz=(this.state.me&&this.state.me.business)||{};
@@ -2656,7 +2708,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.field('Type "'+biz.name+'" to confirm',{value:confirmVal,onChange:this.setDeleteBizConfirm,ph:biz.name})));
     return this.modalShell('Delete this business','This action is permanent and cannot be undone.',body,
       [this.btn('Cancel',{variant:'ghost',onClick:this.closeModal}),
-       this.btn('Delete business',{icon:this.icons.trash,variant:'danger',disabled:onlyBusiness||!matches,onClick:this.confirmDeleteBusiness})],540);
+       this.btn('Delete business',{icon:this.icons.trash,variant:'danger',disabled:onlyBusiness||!matches,loading:this.state.busy,loadingLabel:'Removing…',onClick:this.confirmDeleteBusiness})],540);
   }
   renderProdConfirm(){
     const c=this.state.prodConfirm;
@@ -2676,8 +2728,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete '+t.item.toLowerCase()+'?'),
         this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},this.h('strong',null,p.name||''),' and its stock history will be permanently removed. This can’t be undone. Items with sales, loss or production history can’t be deleted — mark them inactive instead.'),
         this.h('div',{style:{display:'flex',gap:10}},
-          this.h('button',{onClick:()=>this.setState({delProduct:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
-          this.h('button',{onClick:this.confirmDeleteProduct,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete '+t.item.toLowerCase()))));
+          this.h('button',{onClick:()=>this.setState({delProduct:null}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),
+          this.h('button',{onClick:this.state.busy?null:this.confirmDeleteProduct,disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.7:1}},this.state.busy?'Deleting…':('Delete '+t.item.toLowerCase())))));
   }
   renderDeleteProdRunConfirm(){
     const run=this.state.delProdRun||{};
@@ -2688,8 +2740,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete draft production run?'),
         this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'The draft run for ',this.h('strong',null,run.name||''),' will be removed. This can’t be undone. Completed runs can’t be deleted.'),
         this.h('div',{style:{display:'flex',gap:10}},
-          this.h('button',{onClick:()=>this.setState({delProdRun:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
-          this.h('button',{onClick:this.confirmDeleteProdRun,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete draft'))));
+          this.h('button',{onClick:()=>this.setState({delProdRun:null}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),
+          this.h('button',{onClick:this.state.busy?null:this.confirmDeleteProdRun,disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.7:1}},this.state.busy?'Deleting…':'Delete draft'))));
   }
   renderDeleteInvoiceConfirm(){
     const inv=this.state.delInvoice||{};
@@ -2711,8 +2763,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.h('h2',{style:{fontSize:19,fontWeight:800,marginBottom:8}},'Delete '+n+' '+(n===1?t.item.toLowerCase():t.items.toLowerCase())+'?'),
         this.h('p',{style:{fontSize:14,color:'var(--muted)',lineHeight:1.5,marginBottom:22}},'This permanently removes the selected '+t.items.toLowerCase()+' and their stock history. This can’t be undone. Any that have sales, loss or production history are skipped.'),
         this.h('div',{style:{display:'flex',gap:10}},
-          this.h('button',{onClick:()=>this.setState({bulkDelOpen:false}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
-          this.h('button',{onClick:this.confirmBulkDelete,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}},'Delete '+n))));
+          this.h('button',{onClick:()=>this.setState({bulkDelOpen:false}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),
+          this.h('button',{onClick:this.state.busy?null:this.confirmBulkDelete,disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:'#dc2626',color:'#fff',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.7:1}},this.state.busy?'Deleting…':('Delete '+n)))));
   }
   renderBulkEditModal(){
     const f=this.state.bulkEdit||{},t=this.term,n=this.state.invSelected.length;
@@ -2729,7 +2781,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.field('Purchase price',{value:f.cost,onChange:bf('cost'),ph:'(unchanged)'}),
         this.field('Selling price',{value:f.sell,onChange:bf('sell'),ph:'(unchanged)'}),
         this.field('Min stock level',{value:f.min,onChange:bf('min'),ph:'(unchanged)',span:2})));
-    return this.modalShell('Edit '+n+' '+(n===1?t.item.toLowerCase():t.items.toLowerCase()),'Apply the same changes to every selected item.',body,[this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkEdit:null})}),this.btn('Apply to '+n,{icon:this.icons.check,onClick:this.applyBulkEdit})],620);
+    return this.modalShell('Edit '+n+' '+(n===1?t.item.toLowerCase():t.items.toLowerCase()),'Apply the same changes to every selected item.',body,[this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({bulkEdit:null})}),this.btn('Apply to '+n,{icon:this.icons.check,onClick:this.applyBulkEdit,loading:this.state.busy,loadingLabel:'Applying…'})],620);
   }
   renderImportConfirm(){
     const c=this.state.importConfirm||{};
@@ -2746,8 +2798,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.h('p',{style:{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:14}},'These rows match a SKU that already exists in your inventory or repeats earlier in the file. Continue to skip them and import the remaining ',this.h('strong',null,c.newCount),' row'+(c.newCount===1?'':'s')+'.'),
         this.h('div',{style:{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:12,marginBottom:18}},list),
         this.h('div',{style:{display:'flex',gap:10}},
-          this.h('button',{onClick:()=>this.setState({importConfirm:null}),style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:'pointer',color:'var(--text2)'}},'Cancel'),
-          this.h('button',{disabled:!c.newCount,onClick:this.confirmImportSkipDuplicates,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:c.newCount?'#169B62':'var(--border)',color:'#fff',fontWeight:700,cursor:c.newCount?'pointer':'not-allowed'}},c.newCount?('Skip '+dups.length+' & import '+c.newCount):'Nothing left to import'))));
+          this.h('button',{onClick:()=>this.setState({importConfirm:null}),disabled:this.state.busy,style:{flex:1,padding:'11px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',fontWeight:700,cursor:this.state.busy?'not-allowed':'pointer',color:'var(--text2)',opacity:this.state.busy?.6:1}},'Cancel'),
+          this.h('button',{disabled:!c.newCount||this.state.busy,onClick:(this.state.busy||!c.newCount)?null:this.confirmImportSkipDuplicates,style:{flex:1,padding:'11px',borderRadius:10,border:'none',background:c.newCount?'#169B62':'var(--border)',color:'#fff',fontWeight:700,cursor:(c.newCount&&!this.state.busy)?'pointer':'not-allowed',opacity:this.state.busy?.7:1}},this.state.busy?'Importing…':(c.newCount?('Skip '+dups.length+' & import '+c.newCount):'Nothing left to import')))));
   }
 
   // ============ DELIVERY DATA ============
@@ -2800,7 +2852,9 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
   };
   setDeliveryField=(k)=>(e)=>this.setState(s=>({deliveryForm:{...s.deliveryForm,[k]:e.target.value}}));
   createDelivery=async()=>{
+    if(this.state.busy)return;
     const f=this.state.deliveryForm||{};
+    this.setState({busy:true});
     try{
       await this.api('/api/deliveries',{method:'POST',body:{
         order_ref:f.order_ref,provider:f.provider,status:'pending',zone:f.zone,address:f.address,
@@ -2811,6 +2865,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.setState({createDelModal:false,deliveryForm:null});
       this.toast('Delivery created');
     }catch(e){this.toast('Could not create delivery — '+e.message)}
+    finally{this.setState({busy:false})}
   };
   openTrack=(d)=>()=>this.setState({trackModal:d});
   configCourier=(c)=>()=>this.setState({courierConfig:c});
@@ -2960,7 +3015,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.field('Parcel weight (kg)',{value:f.weight,onChange:sf('weight')}),
         this.field('COD amount',{value:f.cod_amount,onChange:sf('cod_amount'),hint:'0 for prepaid'}),
         this.field('Special instructions',{value:f.notes,onChange:sf('notes'),ph:'e.g. call before delivery',span:2})));
-    return this.modalShell('Create delivery','Dispatch a parcel — tracking ID is generated when the courier confirms.',body,[this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({createDelModal:false,deliveryForm:null})}),this.btn('Create & send to courier',{icon:this.icons.truck,onClick:this.createDelivery})],640);
+    return this.modalShell('Create delivery','Dispatch a parcel — tracking ID is generated when the courier confirms.',body,[this.btn('Cancel',{variant:'ghost',onClick:()=>this.setState({createDelModal:false,deliveryForm:null})}),this.btn('Create & send to courier',{icon:this.icons.truck,onClick:this.createDelivery,loading:this.state.busy,loadingLabel:'Sending…'})],640);
   }
   renderCourierConfigModal(){
     const c=this.state.courierConfig,I=this.icons,labels=this.capLabels();
@@ -3173,7 +3228,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       emailLabel:T('Email address','ইমেইল'), pwLabel:T('Password','পাসওয়ার্ড'),
       forgotLabel:T('Forgot password?','পাসওয়ার্ড ভুলে গেছেন?'),
       rememberLabel:T('Keep me signed in','আমাকে সাইন ইন রাখুন'),
-      signInLabel:T('Sign in','সাইন ইন'), orLabel:T('or','অথবা'),
+      signInLabel:s.authBusy?T('Signing in…','সাইন ইন হচ্ছে…'):T('Sign in','সাইন ইন'), orLabel:T('or','অথবা'),
       googleLabel:T('Continue with Google','Google দিয়ে চালিয়ে যান'),
       noAccountLabel:T('New to Bhandar360?','Bhandar360 এ নতুন?'), createLabel:T('Create an account','অ্যাকাউন্ট তৈরি করুন'),
       onEmail:(e)=>{this._email=e.target.value}, onPw:(e)=>{this._pw=e.target.value},
@@ -3219,7 +3274,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       onbNum:s.onbStep, onbTitle:ob.t, onbSub:ob.s,
       onbBack:this.onboBack, onbNext:this.onboNext,
       onbBackLabel:s.onbStep<=1?'Skip setup':'Back',
-      onbNextLabel:s.onbStep>=8?'Enter Bhandar360':'Continue',
+      onbNextLabel:s.onbBusy?'Working…':(s.onbStep>=8?'Enter Bhandar360':'Continue'),
       onbBody:this.renderOnbBody(),
       onbSteps:['Account','Industry','Business details','Financial setup','Warehouse','Import products','Invite team','Checklist'].map((label,idx)=>{
         const n=idx+1, done=n<s.onbStep, cur=n===s.onbStep;
