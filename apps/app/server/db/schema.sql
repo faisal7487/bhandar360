@@ -190,6 +190,8 @@ ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_phone TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_phone TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sale_id INTEGER REFERENCES sales(id);
+-- How the invoice was paid: Cash | Card | bKash | Nagad | Bank transfer | Cheque | Credit
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS method TEXT;
 
 CREATE TABLE IF NOT EXISTS deliveries (
   id SERIAL PRIMARY KEY,

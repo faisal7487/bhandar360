@@ -93,10 +93,10 @@ const createSale = db.transaction(async (businessId, customer_id, branch_id, lin
 
   const invInfo = await db
     .prepare(
-      `INSERT INTO invoices (business_id, customer_id, branch_id, invoice_no, total, status, sale_id, customer_name, customer_phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
+      `INSERT INTO invoices (business_id, customer_id, branch_id, invoice_no, total, status, sale_id, customer_name, customer_phone, method)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
     )
-    .run(businessId, customer_id || null, branch_id || null, invoiceNo, total, invStatus, saleId, custName, custPhone);
+    .run(businessId, customer_id || null, branch_id || null, invoiceNo, total, invStatus, saleId, custName, custPhone, method || 'Cash');
 
   const insertInvItem = db.prepare('INSERT INTO invoice_items (invoice_id, name, qty, price) VALUES (?, ?, ?, ?)');
   for (const l of validLines) {

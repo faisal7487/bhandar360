@@ -27,7 +27,10 @@ router.get('/', ah(async (req, res) => {
   res.json({ items: await Promise.all(rows.map(withItems)) });
 }));
 
-const createInvoice = db.transaction(async (businessId, customer_id, branch_id, lines, due_date) => {
+const VALID_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
+const PAYMENT_METHODS = ['Cash', 'Card', 'bKash', 'Nagad', 'Bank transfer', 'Cheque', 'Credit'];
+
+const createInvoice = db.transaction(async (businessId, customer_id, branch_id, lines, due_date, method) => {
   await assertOwned('customers', customer_id, businessId);
   await assertOwned('branches', branch_id, businessId);
 
@@ -38,9 +41,9 @@ const createInvoice = db.transaction(async (businessId, customer_id, branch_id, 
 
   const info = await db
     .prepare(
-      `INSERT INTO invoices (business_id, customer_id, branch_id, invoice_no, total, status, due_date) VALUES (?, ?, ?, ?, ?, 'sent', ?) RETURNING id`
+      `INSERT INTO invoices (business_id, customer_id, branch_id, invoice_no, total, status, due_date, method) VALUES (?, ?, ?, ?, ?, 'sent', ?, ?) RETURNING id`
     )
-    .run(businessId, customer_id || null, branch_id || null, invoiceNo, total, due_date || null);
+    .run(businessId, customer_id || null, branch_id || null, invoiceNo, total, due_date || null, method || null);
 
   const insertItem = db.prepare('INSERT INTO invoice_items (invoice_id, name, qty, price) VALUES (?, ?, ?, ?)');
   for (const l of validLines) {
@@ -50,13 +53,12 @@ const createInvoice = db.transaction(async (businessId, customer_id, branch_id, 
 });
 
 router.post('/', ah(async (req, res) => {
-  const { customer_id, branch_id, lines = [], due_date } = req.body || {};
-  const invoiceId = await createInvoice(req.user.business_id, customer_id, branch_id, lines, due_date);
+  const { customer_id, branch_id, lines = [], due_date, method } = req.body || {};
+  if (method && !PAYMENT_METHODS.includes(method)) return res.status(400).json({ error: 'Invalid payment method' });
+  const invoiceId = await createInvoice(req.user.business_id, customer_id, branch_id, lines, due_date, method);
   const invoice = await db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
   res.status(201).json({ item: await withItems(invoice) });
 }));
-
-const VALID_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
 
 // Edit an invoice. Every field is optional so a bare `{ status }` still works
 // (that's how "Record payment" flips it to paid). When `lines` is supplied the
@@ -79,6 +81,10 @@ const editInvoice = db.transaction(async (businessId, id, body) => {
     fields.branch_id = body.branch_id || null;
   }
   if (body.due_date !== undefined) fields.due_date = body.due_date || null;
+  if (body.method !== undefined) {
+    if (body.method && !PAYMENT_METHODS.includes(body.method)) return { badRequest: 'Invalid payment method' };
+    fields.method = body.method || null;
+  }
 
   if (Array.isArray(body.lines)) {
     const validLines = body.lines.filter((l) => l.name);

@@ -662,12 +662,12 @@ class Component extends DCLogic {
         id:inv.id,no:inv.no,
         cust:inv.customerId?inv.customer:'',
         branch_id:inv.branchId||(this.branches[0]&&this.branches[0].id)||'',
-        due:inv.due||'',status:inv.status||'sent',
+        due:inv.due||'',status:inv.status||'sent',method:inv.method||'',
         lines:inv.items&&inv.items.length?inv.items.map(it=>({name:it.name,qty:it.qty,price:it.price})):[{name:'',qty:1,price:0}],
       }});
       return;
     }
-    this.setState({invBuilder:{cust:'',branch_id:(this.branches[0]&&this.branches[0].id)||'',due:'',lines:[{name:'',qty:1,price:0}]},quickAddOpen:false});
+    this.setState({invBuilder:{cust:'',branch_id:(this.branches[0]&&this.branches[0].id)||'',due:'',method:'Cash',lines:[{name:'',qty:1,price:0}]},quickAddOpen:false});
   };
   closeInvBuilder=()=>this.setState({invBuilder:null});
   invSetCust=(e)=>this.setState(s=>({invBuilder:{...s.invBuilder,cust:e.target.value}}));
@@ -682,7 +682,7 @@ class Component extends DCLogic {
     const cust=this.customers.find(c=>c.name===b.cust);
     const lines=b.lines.filter(l=>l.name);
     if(!lines.length){this.toast('Add at least one line item');return}
-    const payload={customer_id:cust&&cust._id||null,branch_id:b.branch_id||null,due_date:b.due||null,lines};
+    const payload={customer_id:cust&&cust._id||null,branch_id:b.branch_id||null,due_date:b.due||null,method:b.method||null,lines};
     if(b.id)payload.status=b.status;
     this.setState({busy:true});
     try{
@@ -1857,7 +1857,7 @@ class Component extends DCLogic {
   get invoices(){
     return (this.state.data.invoices||[]).map(v=>({
       id:v.id,no:v.invoice_no||('INV-'+v.id),customer:v.customer_name||'Walk-in customer',branch:v.branch_name||'',
-      customerId:v.customer_id||null,branchId:v.branch_id||null,
+      customerId:v.customer_id||null,branchId:v.branch_id||null,method:v.method||'',
       total:Number(v.total)||0,status:v.status||'draft',due:v.due_date||'',created:(v.created_at||'').slice(0,10),
       items:(v.items||[]).map(it=>({name:it.name,qty:Number(it.qty)||0,price:Number(it.price)||0})),
     }));
@@ -1893,7 +1893,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
 </style></head><body>
 <div class="head">
 <div><div class="biz">${this.esc(biz.name||'Your Business')}</div><div class="muted">${this.esc(biz.address||'')}</div></div>
-<div class="meta"><h1>INVOICE</h1><div>${this.esc(inv.no)}</div><div>Date: ${this.esc(inv.created||'—')}</div>${inv.due?`<div>Due: ${this.esc(inv.due)}</div>`:''}</div>
+<div class="meta"><h1>INVOICE</h1><div>${this.esc(inv.no)}</div><div>Date: ${this.esc(inv.created||'—')}</div>${inv.due?`<div>Due: ${this.esc(inv.due)}</div>`:''}${inv.method?`<div>Payment: ${this.esc(inv.method)}</div>`:''}</div>
 </div>
 <div class="bill">
 <div><div class="lbl">Bill to</div><div style="font-weight:700;font-size:14.5px">${this.esc(inv.customer)}</div>${inv.branch?`<div class="muted">${this.esc(inv.branch)}</div>`:''}</div>
@@ -1929,6 +1929,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       doc.text(String(inv.no),R,y,{align:'right'});y+=13;
       doc.text('Date: '+(inv.created||'—'),R,y,{align:'right'});
       if(inv.due){y+=13;doc.text('Due: '+inv.due,R,y,{align:'right'});}
+      if(inv.method){y+=13;doc.text('Payment: '+inv.method,R,y,{align:'right'});}
       y+=30;doc.setTextColor(31,41,55);doc.setFont('helvetica','bold');doc.text('Bill to',L,y);
       doc.setFont('helvetica','normal');y+=14;doc.text(String(inv.customer||'Walk-in customer'),L,y);
       doc.setFont('helvetica','bold');doc.text('Status: '+inv.status,R,y,{align:'right'});doc.setFont('helvetica','normal');
@@ -1999,7 +2000,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         this.td(x.created||'—',{color:'var(--muted)'}),
         this.td(x.due||'—',{color:'var(--muted)'}),
         this.td(this.bdt(x.total),{align:'right',mono:true,bold:true}),
-        this.td(this.badge(c,scc.c,scc.b)),
+        this.td(this.h('div',null,this.badge(c,scc.c,scc.b),x.method?this.h('div',{style:{fontSize:11,color:'var(--muted)',marginTop:3}},x.method):null)),
         this.td(this.h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
           this.h('span',{title:'Edit',onClick:e=>{e.stopPropagation();this.openInvBuilder(x)},style:iconBtn,dangerouslySetInnerHTML:{__html:I.edit}}),
           this.h('span',{title:'Download PDF',onClick:e=>{e.stopPropagation();this.downloadInvoicePdf(x)()},style:iconBtn,dangerouslySetInnerHTML:{__html:I.down}}),
@@ -2032,7 +2033,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
             this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:24,fontWeight:800,color:'#169B62',letterSpacing:'-.01em'}},'INVOICE'),this.h('div',{style:{fontSize:13,color:'var(--muted)',marginTop:4}},inv.no),this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Date: '+(inv.created||'—')),inv.due?this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},'Due: '+inv.due):null)),
           this.h('div',{key:'bill',style:{display:'flex',justifyContent:'space-between',padding:'16px 0',borderTop:'1px solid var(--surface-2)',borderBottom:'1px solid var(--surface-2)',marginBottom:20}},
             this.h('div',null,this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Bill to'),this.h('div',{style:{fontWeight:700,fontSize:14.5}},inv.customer),inv.branch?this.h('div',{style:{fontSize:13,color:'var(--muted)'}},inv.branch):null),
-            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Status'),this.badge(cap,sc.c,sc.b))),
+            this.h('div',{style:{textAlign:'right'}},this.h('div',{style:{fontSize:11.5,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',marginBottom:4}},'Status'),this.badge(cap,sc.c,sc.b),inv.method?this.h('div',{style:{fontSize:12.5,color:'var(--muted)',marginTop:6}},(inv.status==='paid'?'Paid via ':'Via ')+inv.method):null)),
           this.h('table',{key:'tb',style:{width:'100%',borderCollapse:'collapse',marginBottom:18}},
             this.h('thead',null,this.h('tr',null,this.th('Description'),this.th('Qty','right'),this.th('Unit price','right'),this.th('Amount','right'))),
             this.h('tbody',null,inv.items.length?inv.items.map((r,i)=>this.h('tr',{key:i},this.td(r.name,{bold:true}),this.td(r.qty,{align:'right',mono:true}),this.td(this.bdt(r.price),{align:'right',mono:true}),this.td(this.bdt(r.qty*r.price),{align:'right',bold:true,mono:true}))):this.h('tr',null,this.td('No line items on this invoice',{color:'var(--muted)'})))),
@@ -2395,11 +2396,17 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.h('select',{value:b.cust,onChange:this.invSetCust,style:{...inp,appearance:'none'}},this.h('option',{value:''},'Walk-in customer'),this.customers.map((c,i)=>this.h('option',{key:i,value:c.name},c.name)))),
         this.h('div',null,this.h('label',{style:lbl},'Branch'),
           this.h('select',{value:b.branch_id||'',onChange:this.invSetBranch,style:{...inp,appearance:'none'}},this.branches.map((br,i)=>this.h('option',{key:i,value:br.id},br.name))))),
-      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
+      this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:b.id?14:18}},
         this.h('div',null,this.h('label',{style:lbl},'Due date'),
           this.h('input',{type:'date',value:b.due||'',onChange:this.invSetField('due'),style:inp})),
-        b.id?this.h('div',null,this.h('label',{style:lbl},'Status'),
-          this.h('select',{value:b.status||'sent',onChange:this.invSetField('status'),style:{...inp,appearance:'none'}},['draft','sent','paid','overdue','cancelled'].map((s,i)=>this.h('option',{key:i,value:s},s.charAt(0).toUpperCase()+s.slice(1))))):this.h('div',null)),
+        this.h('div',null,this.h('label',{style:lbl},'Payment method'),
+          this.h('select',{value:b.method||'',onChange:this.invSetField('method'),style:{...inp,appearance:'none'}},
+            this.h('option',{value:''},'— not recorded —'),
+            ['Cash','Card','bKash','Nagad','Bank transfer','Cheque','Credit'].map((m,i)=>this.h('option',{key:i,value:m},m))))),
+      b.id?this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}},
+        this.h('div',null,this.h('label',{style:lbl},'Status'),
+          this.h('select',{value:b.status||'sent',onChange:this.invSetField('status'),style:{...inp,appearance:'none'}},['draft','sent','paid','overdue','cancelled'].map((s,i)=>this.h('option',{key:i,value:s},s.charAt(0).toUpperCase()+s.slice(1))))),
+        this.h('div',null)):null,
       this.h('div',{style:{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',marginBottom:14}},
         this.h('div',{style:{display:'grid',gridTemplateColumns:'2.4fr .7fr 1fr 1fr 34px',gap:8,padding:'10px 12px',background:'var(--surface-2)',fontSize:11.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase'}},this.h('span',null,'Item'),this.h('span',null,'Qty'),this.h('span',null,'Price'),this.h('span',{style:{textAlign:'right'}},'Amount'),this.h('span',null,'')),
         b.lines.map((l,i)=>this.h('div',{key:i,style:{display:'grid',gridTemplateColumns:'2.4fr .7fr 1fr 1fr 34px',gap:8,padding:'8px 12px',borderTop:'1px solid var(--border)',alignItems:'center'}},

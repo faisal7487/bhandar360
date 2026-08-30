@@ -67,6 +67,29 @@ test('edit customer, branch, due date and status together', async () => {
   assert.equal(edited.body.item.total, 10, 'total unchanged when lines are not sent');
 });
 
+test('payment method: set on create, edited, and validated', async () => {
+  const { client } = tenant;
+  const created = await client.post('/api/invoices', {
+    customer_id: customerA,
+    method: 'bKash',
+    lines: [{ name: 'A', qty: 1, price: 10 }],
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.item.method, 'bKash');
+  const id = created.body.item.id;
+
+  const edited = await client.put(`/api/invoices/${id}`, { method: 'Bank transfer' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.item.method, 'Bank transfer');
+
+  // Clearing it is allowed.
+  assert.equal((await client.put(`/api/invoices/${id}`, { method: '' })).body.item.method, null);
+
+  // Anything off the list is rejected.
+  assert.equal((await client.post('/api/invoices', { customer_id: customerA, method: 'Crypto', lines: [{ name: 'A', qty: 1, price: 1 }] })).status, 400);
+  assert.equal((await client.put(`/api/invoices/${id}`, { method: 'Crypto' })).status, 400);
+});
+
 test('status-only PUT still works (the Record-payment path)', async () => {
   const { client } = tenant;
   const id = (await client.post('/api/invoices', { customer_id: customerA, lines: [{ name: 'A', qty: 1, price: 40 }] })).body.item.id;

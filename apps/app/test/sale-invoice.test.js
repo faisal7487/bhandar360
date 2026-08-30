@@ -38,6 +38,7 @@ test('a completed sale generates a linked, paid invoice with matching lines', as
   assert.ok(inv, 'an invoice is linked to the sale');
   assert.equal(inv.invoice_no, sale.body.item.invoice_no);
   assert.equal(inv.status, 'paid', 'a cash sale bills as paid');
+  assert.equal(inv.method, 'Cash', 'the invoice records how it was paid');
   assert.equal(inv.total, 60, '3 * 20');
   assert.equal(inv.items.length, 1);
   assert.equal(inv.items[0].name, 'Widget');
@@ -49,6 +50,7 @@ test('a Credit sale bills the invoice as unpaid (sent)', async () => {
   const sale = await client.post('/api/sales', { lines: saleLines(1, 20), method: 'Credit' });
   const inv = (await client.get('/api/invoices')).body.items.find((v) => v.sale_id === sale.body.item.id);
   assert.equal(inv.status, 'sent');
+  assert.equal(inv.method, 'Credit');
 });
 
 test('a walk-in sale captures name + phone on both sale and invoice', async () => {
