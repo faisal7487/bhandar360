@@ -422,6 +422,7 @@ class Component extends DCLogic {
     lossModal: false,
     lossForm: null,
     cart: [],
+    posSearch: '',
     posCustomer: '',       // '' = walk-in, else a customer id
     posWalkinName: '',
     posWalkinPhone: '',
@@ -948,7 +949,7 @@ class Component extends DCLogic {
   }
 
   // ---------- handlers ----------
-  go=(v)=>()=>this.setState({view:v,bizOpen:false,notifOpen:false,quickAddOpen:false,selectedProduct:null,productModal:null,invSelected:[],supSel:[],supFilter:'',custSel:[],custFilter:''});
+  go=(v)=>()=>this.setState({view:v,bizOpen:false,notifOpen:false,quickAddOpen:false,selectedProduct:null,productModal:null,invSelected:[],supSel:[],supFilter:'',custSel:[],custFilter:'',posSearch:''});
   toast(msg){this.setState({toast:msg});clearTimeout(this._t);this._t=setTimeout(()=>this.setState({toast:null}),2600)}
   toggleSidebar=()=>this.setState(s=>({sidebarOpen:!s.sidebarOpen}));
   toggleBiz=()=>this.setState(s=>({bizOpen:!s.bizOpen,notifOpen:false,quickAddOpen:false}));
@@ -1813,13 +1814,19 @@ class Component extends DCLogic {
     const sub=cart.reduce((a,c)=>a+c.sell*c.qty,0), tax=Math.round(sub*0.05), disc=cart.length?Math.round(sub*0.02):0, tot=sub+tax-disc;
     const cats=['All',...t.cat];
     const activeCat=this.state.posCat||'All';
-    const shownProducts=activeCat==='All'?this.products:this.products.filter(p=>p.cat===activeCat);
+    const q=(this.state.posSearch||'').trim().toLowerCase();
+    let shownProducts=activeCat==='All'?this.products:this.products.filter(p=>p.cat===activeCat);
+    if(q)shownProducts=shownProducts.filter(p=>(p.name+' '+(p.generic||'')+' '+(p.sku||'')+' '+(p.brand||'')).toLowerCase().includes(q));
     return this.h('div',{style:{maxWidth:1320,margin:'0 auto'}},
-      this.pageHead('Point of Sale','Fast checkout — scan or tap to add '+t.items.toLowerCase()+' to the cart.',[this.btn('Scan barcode',{icon:I.scan,variant:'ghost'})]),
+      this.pageHead('Point of Sale','Fast checkout — scan, search or tap to add '+t.items.toLowerCase()+' to the cart.',[this.btn('Scan barcode',{icon:I.scan,variant:'ghost'})]),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 380px',gap:18,alignItems:'start'}},
         this.h('div',null,
+          this.h('div',{style:{position:'relative',marginBottom:12}},
+            this.h('span',{style:{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',width:16,height:16,display:'flex',color:'var(--muted)',pointerEvents:'none'},dangerouslySetInnerHTML:{__html:I.search}}),
+            this.h('input',{value:this.state.posSearch||'',onChange:e=>this.setState({posSearch:e.target.value}),placeholder:'Search '+t.items.toLowerCase()+' by name, generic, SKU or brand…',style:{...this.inpStyle,paddingLeft:34}}),
+            q?this.h('span',{onClick:()=>this.setState({posSearch:''}),style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:12,fontWeight:700,color:'var(--muted)',cursor:'pointer'}},'Clear'):null),
           this.h('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}},cats.map((c,i)=>{const on=c===activeCat;return this.h('button',{key:i,onClick:()=>this.setState({posCat:c}),style:{padding:'7px 14px',borderRadius:20,fontSize:12.5,fontWeight:700,cursor:'pointer',border:'1px solid '+(on?'#169B62':'var(--border)'),background:on?'#169B62':'var(--surface)',color:on?'#fff':'var(--text2)'}},c)})),
-          shownProducts.length===0?this.h('div',{style:{padding:'48px 24px',textAlign:'center',color:'var(--muted)',fontSize:13.5,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:14}},'No '+t.items.toLowerCase()+' in this category'):
+          shownProducts.length===0?this.h('div',{style:{padding:'48px 24px',textAlign:'center',color:'var(--muted)',fontSize:13.5,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:14}},q?('No '+t.items.toLowerCase()+' match "'+this.state.posSearch.trim()+'"'):('No '+t.items.toLowerCase()+' in this category')):
           this.h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}},shownProducts.map((p,i)=>{
             const out=p.stock===0;
             return this.h('div',{key:i,onClick:this.addToCart(p),style:{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:14,padding:14,cursor:out?'not-allowed':'pointer',opacity:out?.5:1,transition:'transform .12s,box-shadow .12s',boxShadow:'0 1px 2px rgba(16,24,40,.04)'},onMouseEnter:e=>{if(!out){e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 10px 24px -12px rgba(16,24,40,.25)'}},onMouseLeave:e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 1px 2px rgba(16,24,40,.04)'}},
