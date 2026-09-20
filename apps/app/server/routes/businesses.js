@@ -41,7 +41,7 @@ router.post('/', ah(async (req, res) => {
     req.user.id,
     info.lastInsertRowid
   );
-  setAuthCookie(res, req.user.id, info.lastInsertRowid);
+  setAuthCookie(res, req.user.id, info.lastInsertRowid, req.sessionId);
   const business = await db.prepare('SELECT * FROM businesses WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json({ business: publicBusiness(business) });
 }));
@@ -51,21 +51,33 @@ router.post('/:id/switch', ah(async (req, res) => {
     .prepare('SELECT 1 FROM memberships WHERE user_id = ? AND business_id = ?')
     .get(req.user.id, req.params.id);
   if (!membership) return res.status(403).json({ error: 'Not a member of this business' });
-  setAuthCookie(res, req.user.id, req.params.id);
+  setAuthCookie(res, req.user.id, req.params.id, req.sessionId);
   const business = await db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.params.id);
   res.json({ business: publicBusiness(business) });
 }));
 
+// Order matters here: a row referencing another via foreign key has to be
+// deleted before the row it references, or Postgres rejects the delete with
+// a constraint violation. Concretely — invoices before sales (invoices.sale_id),
+// production_runs/recipes before products, sales/invoices before customers &
+// branches, products before categories & warehouses, purchase_orders before
+// suppliers & warehouses. recipes/recipe_components previously weren't
+// cleaned up here at all, which meant deleting a business that had any
+// recipes defined (restaurant/retail with the production feature) failed
+// outright — recipes.business_id still pointed at the row being deleted.
 const TEARDOWN_TABLES = [
-  'stock_movements', 'losses', 'expenses', 'production_runs', 'deliveries',
-  'team_members', 'notifications', 'products', 'customers', 'suppliers',
-  'categories', 'branches', 'warehouses', 'sales', 'invoices', 'purchase_orders',
+  'invoices', 'stock_movements', 'losses', 'production_runs', 'deliveries',
+  'team_members', 'notifications', 'expenses',
+  'sales', 'recipes',
+  'products', 'customers', 'branches', 'purchase_orders',
+  'categories', 'suppliers', 'warehouses',
 ];
 
 const teardownBusiness = db.transaction(async (id, fallbackBusinessId) => {
   await db.prepare('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE business_id = ?)').run(id);
   await db.prepare('DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE business_id = ?)').run(id);
   await db.prepare('DELETE FROM purchase_order_items WHERE po_id IN (SELECT id FROM purchase_orders WHERE business_id = ?)').run(id);
+  await db.prepare('DELETE FROM recipe_components WHERE recipe_id IN (SELECT id FROM recipes WHERE business_id = ?)').run(id);
   for (const table of TEARDOWN_TABLES) {
     await db.prepare(`DELETE FROM ${table} WHERE business_id = ?`).run(id);
   }
@@ -101,7 +113,7 @@ router.delete('/:id', ah(async (req, res) => {
     const fallback = await db
       .prepare('SELECT business_id FROM memberships WHERE user_id = ? LIMIT 1')
       .get(req.user.id);
-    if (fallback) setAuthCookie(res, req.user.id, fallback.business_id);
+    if (fallback) setAuthCookie(res, req.user.id, fallback.business_id, req.sessionId);
   }
   res.json({ ok: true });
 }));

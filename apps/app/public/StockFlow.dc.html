@@ -247,29 +247,45 @@
       <div style="margin:auto;width:100%;max-width:380px">
         <h1 style="font-size:27px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px">{{ authTitle }}</h1>
         <p style="color:var(--muted);font-size:14.5px;margin-bottom:28px">{{ authSubtitle }}</p>
-        <label style="display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:7px">{{ emailLabel }}</label>
-        <input onInput="{{ onEmail }}" type="email" placeholder="you@business.bd" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;margin-bottom:18px;background:var(--surface);color:var(--text)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-          <label style="font-size:13px;font-weight:600;color:var(--text2)">{{ pwLabel }}</label>
-          <span style="font-size:12.5px;color:#169B62;font-weight:600;cursor:pointer">{{ forgotLabel }}</span>
-        </div>
-        <input onInput="{{ onPw }}" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;background:var(--surface);color:var(--text)">
-        <sc-if value="{{ authErr }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;color:#b91c1c;font-size:13px;font-weight:600">{{ authErr }}</div>
+        <sc-if value="{{ showSignin }}" hint-placeholder-val="{{ true }}">
+          <label style="display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:7px">{{ emailLabel }}</label>
+          <input onInput="{{ onEmail }}" type="email" placeholder="you@business.bd" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;margin-bottom:18px;background:var(--surface);color:var(--text)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+            <label style="font-size:13px;font-weight:600;color:var(--text2)">{{ pwLabel }}</label>
+            <span onClick="{{ openForgot }}" style="font-size:12.5px;color:#169B62;font-weight:600;cursor:pointer">{{ forgotLabel }}</span>
+          </div>
+          <input onInput="{{ onPw }}" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;background:var(--surface);color:var(--text)">
+          <sc-if value="{{ authErr }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;color:#b91c1c;font-size:13px;font-weight:600">{{ authErr }}</div>
+          </sc-if>
+          <label style="display:flex;align-items:center;gap:9px;margin:18px 0 22px;font-size:13.5px;color:var(--text2);cursor:pointer">
+            <input type="checkbox" checked="{{ remember }}" onChange="{{ onRemember }}" style="width:16px;height:16px;accent-color:#169B62">{{ rememberLabel }}
+          </label>
+          <button onClick="{{ signIn }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:#169B62;color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px -8px rgba(22,155,98,.6)">{{ signInLabel }}</button>
+          <div style="text-align:center;margin-top:26px;font-size:13.5px;color:var(--muted)">{{ noAccountLabel }} <span onClick="{{ goSignup }}" style="color:#169B62;font-weight:700;cursor:pointer">{{ createLabel }}</span></div>
         </sc-if>
-        <label style="display:flex;align-items:center;gap:9px;margin:18px 0 22px;font-size:13.5px;color:var(--text2);cursor:pointer">
-          <input type="checkbox" checked="{{ remember }}" onChange="{{ onRemember }}" style="width:16px;height:16px;accent-color:#169B62">{{ rememberLabel }}
-        </label>
-        <button onClick="{{ signIn }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:#169B62;color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px -8px rgba(22,155,98,.6)">{{ signInLabel }}</button>
-        <div style="display:flex;align-items:center;gap:14px;margin:22px 0">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:12.5px;color:var(--muted);font-weight:600">{{ orLabel }}</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <button onClick="{{ signIn }}" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
-          <span style="width:18px;height:18px;display:flex">{{ googleIconNode }}</span>{{ googleLabel }}
-        </button>
-        <div style="text-align:center;margin-top:26px;font-size:13.5px;color:var(--muted)">{{ noAccountLabel }} <span onClick="{{ goSignup }}" style="color:#169B62;font-weight:700;cursor:pointer">{{ createLabel }}</span></div>
+        <sc-if value="{{ showForgot }}" hint-placeholder-val="{{ false }}">
+          <label style="display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:7px">{{ emailLabel }}</label>
+          <input onInput="{{ onForgotEmail }}" type="email" placeholder="you@business.bd" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;margin-bottom:18px;background:var(--surface);color:var(--text)">
+          <sc-if value="{{ authErr }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;color:#b91c1c;font-size:13px;font-weight:600">{{ authErr }}</div>
+          </sc-if>
+          <sc-if value="{{ authMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;font-size:13px;font-weight:600">{{ authMsg }}</div>
+          </sc-if>
+          <button onClick="{{ submitForgot }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:#169B62;color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px -8px rgba(22,155,98,.6)">{{ forgotSubmitLabel }}</button>
+          <div style="text-align:center;margin-top:26px;font-size:13.5px;color:var(--muted)"><span onClick="{{ backToSignin }}" style="color:#169B62;font-weight:700;cursor:pointer">{{ backToSigninLabel }}</span></div>
+        </sc-if>
+        <sc-if value="{{ showReset }}" hint-placeholder-val="{{ false }}">
+          <label style="display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:7px">{{ newPwLabel }}</label>
+          <input onInput="{{ onResetPw }}" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;margin-bottom:18px;background:var(--surface);color:var(--text)">
+          <label style="display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:7px">{{ confirmPwLabel }}</label>
+          <input onInput="{{ onResetPw2 }}" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:11px;font-size:14px;background:var(--surface);color:var(--text)">
+          <sc-if value="{{ authErr }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;color:#b91c1c;font-size:13px;font-weight:600">{{ authErr }}</div>
+          </sc-if>
+          <button onClick="{{ submitReset }}" style="width:100%;padding:13px;border:none;border-radius:12px;background:#169B62;color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px -8px rgba(22,155,98,.6);margin-top:22px">{{ resetSubmitLabel }}</button>
+        </sc-if>
       </div>
     </div>
   </div>
@@ -426,8 +442,11 @@ class Component extends DCLogic {
   state = {
     phase: 'booting',         // 'booting' | 'auth' | 'onboarding' | 'app'
     authMode: 'signin',       // 'signin' | 'signup'
+    authView: 'signin',       // 'signin' | 'forgot' | 'reset'
+    resetToken: '',
     remember: true,
     authErr: '',
+    authMsg: '',
     authBusy: false,
     onbBusy: false,
     lossDeciding: null,
@@ -484,6 +503,9 @@ class Component extends DCLogic {
     prodSelRecipe: null,     // recipe id selected on the Production page
     prodQty: '',             // batch quantity entered on the Production page
     photoModal: false,
+    avatarBusy: false,
+    sessions: [],
+    sessionsLoading: false,
     avatarColor: 'linear-gradient(135deg,#169B62,#0d9488)',
     supplierModal: false,
     supplierForm: null,
@@ -514,7 +536,7 @@ class Component extends DCLogic {
     deleteBizConfirm: '',
     businessForm: null,
     me: null,
-    obForm: {name:'',email:'',pw:'',bizName:'',address:'',branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]},
+    obForm: {name:'',email:'',pw:'',bizName:undefined,address:undefined,branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]},
     businesses: [],
     onbMode: 'signup',
     prevBusinessId: null,
@@ -526,8 +548,37 @@ class Component extends DCLogic {
     },
   };
   openPhoto=()=>this.setState({photoModal:true});
+  triggerChooseFile=()=>{this.avatarFileInput&&this.avatarFileInput.click()};
+  triggerTakePhoto=()=>{this.avatarCameraInput&&this.avatarCameraInput.click()};
+  onAvatarFilePicked=async(e)=>{
+    const file=e.target.files&&e.target.files[0];
+    e.target.value=''; // allow picking the same file again later
+    if(!file)return;
+    if(!/^image\/(png|jpe?g)$/.test(file.type)){this.toast(this.tr('Please choose a JPG or PNG image','JPG বা PNG ছবি নির্বাচন করুন'));return}
+    if(file.size>2*1024*1024){this.toast(this.tr('Image must be 2 MB or smaller','ছবি ২ MB এর কম হতে হবে'));return}
+    let dataUrl;
+    try{dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('read failed'));r.readAsDataURL(file)})}
+    catch(e){this.toast(this.tr('Could not read that image','ছবি পড়া যায়নি'));return}
+    this.setState({avatarBusy:true});
+    try{
+      const r=await this.api('/api/auth/avatar',{method:'PATCH',body:{dataUrl}});
+      this.setState({me:r.user});
+      this.toast(this.tr('Profile photo updated','প্রোফাইল ছবি আপডেট হয়েছে'));
+    }catch(e){this.toast(this.tr('Could not upload photo — ','ছবি আপলোড করা যায়নি — ')+e.message)}
+    finally{this.setState({avatarBusy:false})}
+  };
+  removePhoto=async()=>{
+    if(this.state.avatarBusy)return;
+    this.setState({avatarBusy:true});
+    try{
+      const r=await this.api('/api/auth/avatar',{method:'DELETE'});
+      this.setState({me:r.user,photoModal:false,avatarColor:'linear-gradient(135deg,#475569,#0f172a)'});
+      this.toast(this.tr('Photo removed','ছবি সরানো হয়েছে'));
+    }catch(e){this.toast(this.tr('Could not remove photo — ','ছবি সরানো যায়নি — ')+e.message)}
+    finally{this.setState({avatarBusy:false})}
+  };
   setAvatar=(c)=>()=>this.setState({avatarColor:c});
-  savePhoto=()=>{this.setState({photoModal:false});this.toast(this.tr('Profile photo updated','প্রোফাইল ছবি আপডেট হয়েছে'))};
+  savePhoto=()=>{this.setState({photoModal:false})};
   // ---- Recipes (bill of materials) ----
   // Production / recipes only apply to businesses that actually build goods —
   // restaurants (kitchen prep) and retail (assembly/repack). Pharmacies don't
@@ -637,6 +688,10 @@ class Component extends DCLogic {
     }
   }
   async boot(){
+    try{
+      const resetToken=new URLSearchParams(window.location.search).get('reset');
+      if(resetToken){this.setState({phase:'auth',authView:'reset',resetToken});return}
+    }catch(e){}
     try{
       const r=await this.api('/api/auth/me');
       const onboarded=r.user.business&&r.user.business.onboarded;
@@ -1503,7 +1558,7 @@ class Component extends DCLogic {
     try{
       await this.api('/api/businesses',{method:'POST',body:{name:'New Business',industry:'pharmacy'}});
       const me=await this.api('/api/auth/me');
-      this.setState({me:me.user,industry:'pharmacy',phase:'onboarding',onbStep:2,onbMode:'addBusiness',prevBusinessId:prevId,bizOpen:false,obForm:{name:'',email:'',pw:'',bizName:'',address:'',branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]}});
+      this.setState({me:me.user,industry:'pharmacy',phase:'onboarding',onbStep:2,onbMode:'addBusiness',prevBusinessId:prevId,bizOpen:false,obForm:{name:'',email:'',pw:'',bizName:undefined,address:undefined,branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]}});
       await this.loadBusinesses();
     }catch(e){this.toast('Could not start setup \u2014 '+e.message)}
     finally{this.setState({busy:false})}
@@ -1543,6 +1598,40 @@ class Component extends DCLogic {
   };
   goSignup=()=>{this.setState({phase:'onboarding',onbStep:1,authErr:''})};
   signOut=async()=>{try{await this.api('/api/auth/signout',{method:'POST'})}catch(e){}this.setState({phase:'auth',me:null})};
+  openForgot=()=>{this._forgotEmail=this._email;this.setState({authView:'forgot',authErr:'',authMsg:''})};
+  backToSignin=()=>{this.setState({authView:'signin',authErr:'',authMsg:''})};
+  onForgotEmail=(e)=>{this._forgotEmail=e.target.value};
+  onResetPw=(e)=>{this._resetPw=e.target.value};
+  onResetPw2=(e)=>{this._resetPw2=e.target.value};
+  submitForgot=async()=>{
+    if(this.state.authBusy)return;
+    const em=(this._forgotEmail||'').trim();
+    if(!em||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){this.setState({authErr:this.tr('Enter a valid email address','সঠিক ইমেইল দিন'),authMsg:''});return}
+    this.setState({authBusy:true,authErr:'',authMsg:''});
+    try{
+      const r=await this.api('/api/auth/forgot-password',{method:'POST',body:{email:em}});
+      this.setState({authMsg:r.message||this.tr('If an account exists for that email, we’ve sent reset instructions.','এই ইমেইলে অ্যাকাউন্ট থাকলে রিসেট নির্দেশনা পাঠানো হয়েছে।')});
+      // Dev fallback when no email provider (RESEND_API_KEY) is configured —
+      // the backend hands the link straight back instead of silently
+      // dropping it, so surface it here to keep the flow testable locally.
+      if(r.devResetUrl)this.toast('Dev mode: '+r.devResetUrl);
+    }catch(e){this.setState({authErr:e.message})}
+    finally{this.setState({authBusy:false})}
+  };
+  submitReset=async()=>{
+    if(this.state.authBusy)return;
+    const pw=(this._resetPw||'').trim(),pw2=(this._resetPw2||'').trim();
+    if(!pw||pw.length<8){this.setState({authErr:this.tr('Password must be at least 8 characters','পাসওয়ার্ড অন্তত ৮ অক্ষরের হতে হবে')});return}
+    if(pw!==pw2){this.setState({authErr:this.tr('Passwords do not match','পাসওয়ার্ড মিলছে না')});return}
+    this.setState({authBusy:true,authErr:''});
+    try{
+      await this.api('/api/auth/reset-password',{method:'POST',body:{token:this.state.resetToken,password:pw}});
+      this.setState({authView:'signin',resetToken:'',authErr:'',authMsg:''});
+      this.toast(this.tr('Password updated — sign in with your new password.','পাসওয়ার্ড আপডেট হয়েছে — নতুন পাসওয়ার্ড দিয়ে সাইন ইন করুন।'));
+      try{window.history.replaceState(null,'',window.location.pathname)}catch(e){}
+    }catch(e){this.setState({authErr:e.message})}
+    finally{this.setState({authBusy:false})}
+  };
 
   // ---------- onboarding view helpers ----------
   get onbData(){
@@ -1906,6 +1995,17 @@ class Component extends DCLogic {
   selectInvoice=(id)=>()=>this.setState({selectedInvoiceId:id});
   esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
   money(n){n=Number(n)||0;return '৳'+((n>0&&n<10)?n.toFixed(2):Math.round(n).toLocaleString('en-IN'))}
+  // jsPDF's standard fonts (helvetica/times/courier) only cover WinAnsi —
+  // ৳ and ₹ aren't in it, so doc.text() silently mangles them into a
+  // meaningless glyph (e.g. "ó18") instead of throwing. Embedding a Unicode
+  // font just for this would add a large asset to a single-file app, so PDF
+  // output uses an ASCII-safe prefix for the business's currency instead.
+  moneyPdf(n){
+    n=Number(n)||0;
+    const code=(this.state.me&&this.state.me.business&&this.state.me.business.currency)||'BDT';
+    const prefix={BDT:'Tk ',USD:'$',INR:'Rs ',EUR:'€'}[code]||(code+' ');
+    return prefix+((n>0&&n<10)?n.toFixed(2):Math.round(n).toLocaleString('en-IN'));
+  }
   invoiceDocHtml(inv){
     const biz=(this.state.me&&this.state.me.business)||{};
     const sub=inv.items.reduce((a,r)=>a+r.qty*r.price,0);
@@ -1985,14 +2085,14 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
         const amt=(Number(it.qty)||0)*(Number(it.price)||0);sub+=amt;
         doc.text(String(it.name||'').slice(0,52),L,y);
         doc.text(String(it.qty),350,y,{align:'right'});
-        doc.text(this.money(it.price),450,y,{align:'right'});
-        doc.text(this.money(amt),R,y,{align:'right'});
+        doc.text(this.moneyPdf(it.price),450,y,{align:'right'});
+        doc.text(this.moneyPdf(amt),R,y,{align:'right'});
         y+=8;doc.setDrawColor(241,243,245);doc.line(L,y,R,y);y+=15;
         if(y>770){doc.addPage();y=62;}
       });
-      y+=12;doc.setTextColor(107,114,128);doc.text('Subtotal',450,y,{align:'right'});doc.text(this.money(sub),R,y,{align:'right'});
+      y+=12;doc.setTextColor(107,114,128);doc.text('Subtotal',450,y,{align:'right'});doc.text(this.moneyPdf(sub),R,y,{align:'right'});
       y+=20;doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(31,41,55);doc.text('Total due',450,y,{align:'right'});
-      doc.setTextColor(22,155,98);doc.text(this.money(inv.total||sub),R,y,{align:'right'});
+      doc.setTextColor(22,155,98);doc.text(this.moneyPdf(inv.total||sub),R,y,{align:'right'});
       doc.save('Invoice-'+String(inv.no).replace(/[^A-Za-z0-9_-]/g,'')+'.pdf');
       this.toast('Invoice PDF downloaded');
     }catch(e){this.printInvoice(inv)();this.toast('Could not build PDF — opened print view instead')}
@@ -2348,20 +2448,25 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
 
   // ============ SETTINGS ============
   renderPhotoModal(){
-    const I=this.icons,T=this.tr;
+    const I=this.icons,T=this.tr,busy=!!this.state.avatarBusy;
+    const avatarUrl=this.state.me&&this.state.me.avatarUrl;
     const opts=['linear-gradient(135deg,#169B62,#0d9488)','linear-gradient(135deg,#2563eb,#7c3aed)','linear-gradient(135deg,#ea580c,#dc2626)','linear-gradient(135deg,#0d9488,#0891b2)','linear-gradient(135deg,#7c3aed,#db2777)','linear-gradient(135deg,#475569,#0f172a)'];
     const body=this.h('div',null,
+      this.h('input',{key:'file',type:'file',accept:'image/png,image/jpeg',style:{display:'none'},ref:(el)=>{this.avatarFileInput=el},onChange:this.onAvatarFilePicked}),
+      this.h('input',{key:'cam',type:'file',accept:'image/*',capture:'user',style:{display:'none'},ref:(el)=>{this.avatarCameraInput=el},onChange:this.onAvatarFilePicked}),
       this.h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',marginBottom:20}},
-        this.h('div',{style:{width:96,height:96,borderRadius:26,background:this.state.avatarColor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:32,marginBottom:12}},'RA'),
+        avatarUrl
+          ?this.h('img',{src:avatarUrl,style:{width:96,height:96,borderRadius:26,objectFit:'cover',marginBottom:12}})
+          :this.h('div',{style:{width:96,height:96,borderRadius:26,background:this.state.avatarColor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:32,marginBottom:12}},'RA'),
         this.h('div',{style:{fontSize:12.5,color:'var(--muted)'}},T('Current photo','বর্তমান ছবি'))),
       this.h('div',{style:{border:'2px dashed var(--border)',borderRadius:14,padding:'26px',textAlign:'center',marginBottom:18}},
         this.h('span',{style:{width:32,height:32,display:'inline-flex',color:'#169B62',marginBottom:8},dangerouslySetInnerHTML:{__html:I.upload}}),
         this.h('div',{style:{fontSize:14,fontWeight:700}},T('Upload a new photo','নতুন ছবি আপলোড করুন')),
         this.h('div',{style:{fontSize:12.5,color:'var(--muted)',marginTop:3}},T('JPG or PNG, up to 2 MB','JPG বা PNG, সর্বোচ্চ ২ MB')),
-        this.h('div',{style:{marginTop:12,display:'flex',gap:9,justifyContent:'center'}},this.btn(T('Choose file','ফাইল নির্বাচন'),{variant:'soft',size:'sm',onClick:()=>this.toast(T('File picker opened','ফাইল পিকার খোলা হয়েছে'))}),this.btn(T('Take photo','ছবি তুলুন'),{variant:'ghost',size:'sm',onClick:()=>this.toast(T('Camera opened','ক্যামেরা খোলা হয়েছে'))}))),
+        this.h('div',{style:{marginTop:12,display:'flex',gap:9,justifyContent:'center'}},this.btn(T('Choose file','ফাইল নির্বাচন'),{variant:'soft',size:'sm',onClick:this.triggerChooseFile,loading:busy,disabled:busy}),this.btn(T('Take photo','ছবি তুলুন'),{variant:'ghost',size:'sm',onClick:this.triggerTakePhoto,disabled:busy}))),
       this.h('div',{style:{fontSize:12.5,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:10}},T('Or pick an avatar colour','অথবা একটি রঙ বাছুন')),
-      this.h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},opts.map((c,i)=>{const on=this.state.avatarColor===c;return this.h('div',{key:i,onClick:this.setAvatar(c),style:{width:52,height:52,borderRadius:15,background:c,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:15,boxShadow:on?'0 0 0 3px #169B62, 0 0 0 5px var(--surface)':'none'}},'RA')})));
-    return this.modalShell(T('Change profile photo','প্রোফাইল ছবি পরিবর্তন'),T('Upload an image or choose an avatar colour.','ছবি আপলোড করুন বা রঙ বাছুন।'),body,[this.btn(T('Remove photo','ছবি সরান'),{variant:'ghost',onClick:()=>{this.setState({photoModal:false,avatarColor:'linear-gradient(135deg,#475569,#0f172a)'});this.toast(T('Photo removed','ছবি সরানো হয়েছে'))}}),this.btn(T('Save photo','ছবি সেভ করুন'),{icon:I.check,onClick:this.savePhoto})],520);
+      this.h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},opts.map((c,i)=>{const on=!avatarUrl&&this.state.avatarColor===c;return this.h('div',{key:i,onClick:this.setAvatar(c),style:{width:52,height:52,borderRadius:15,background:c,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:15,boxShadow:on?'0 0 0 3px #169B62, 0 0 0 5px var(--surface)':'none'}},'RA')})));
+    return this.modalShell(T('Change profile photo','প্রোফাইল ছবি পরিবর্তন'),T('Upload an image or choose an avatar colour.','ছবি আপলোড করুন বা রঙ বাছুন।'),body,[this.btn(T('Remove photo','ছবি সরান'),{variant:'ghost',onClick:this.removePhoto,disabled:busy||!avatarUrl}),this.btn(T('Save photo','ছবি সেভ করুন'),{icon:I.check,onClick:this.savePhoto,disabled:busy})],520);
   }
   renderRecipeModal(){
     const I=this.icons,f=this.state.recipeModal,prods=this.products;
@@ -2504,18 +2609,54 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       }))
     ],{padding:24});
   }
+  deviceLabel=(ua)=>{
+    if(!ua)return this.tr('Unknown device','অজানা ডিভাইস');
+    const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':this.tr('Browser','ব্রাউজার');
+    const os=/iPhone/.test(ua)?'iPhone':/iPad/.test(ua)?'iPad':/Android/.test(ua)?'Android':/Mac OS X/.test(ua)?'macOS':/Windows/.test(ua)?'Windows':/Linux/.test(ua)?'Linux':this.tr('Unknown OS','অজানা OS');
+    return browser+' · '+os;
+  };
+  timeAgo=(ts)=>{
+    if(!ts)return '';
+    const then=new Date(ts.replace(' ','T')+'Z').getTime();
+    const diffSec=Math.max(0,Math.round((Date.now()-then)/1000));
+    if(diffSec<120)return this.tr('Active now','এখন সক্রিয়');
+    const mins=Math.round(diffSec/60);
+    if(mins<60)return mins+' '+this.tr('minutes ago','মিনিট আগে');
+    const hrs=Math.round(mins/60);
+    if(hrs<24)return hrs+' '+this.tr('hours ago','ঘণ্টা আগে');
+    const days=Math.round(hrs/24);
+    return days+' '+this.tr('days ago','দিন আগে');
+  };
+  loadSessions=async()=>{
+    if(this.state.sessionsLoading)return;
+    this.setState({sessionsLoading:true});
+    try{
+      const r=await this.api('/api/auth/sessions');
+      this.setState({sessions:r.items||[]});
+    }catch(e){}
+    finally{this.setState({sessionsLoading:false})}
+  };
+  revokeSession=(id)=>async()=>{
+    try{
+      await this.api('/api/auth/sessions/'+id,{method:'DELETE'});
+      this.setState(s=>({sessions:(s.sessions||[]).filter(x=>x.id!==id)}));
+      this.toast(this.tr('Session revoked','সেশন বাতিল'));
+    }catch(e){this.toast(this.tr('Could not revoke session — ','সেশন বাতিল করা যায়নি — ')+e.message)}
+  };
   renderProfile(){
     const I=this.icons,T=this.tr;
     const tabs=[['overview',T('Overview','ওভারভিউ')],['security',T('Security','সিকিউরিটি')],['activity',T('Activity','অ্যাক্টিভিটি')]];
     const tab=this.state.profTab||'overview';
     const stats=[[T('Sales created','বিক্রয় তৈরি'),'1,284',I.sales,'#169B62','#e7f6ef'],[T('Invoices issued','চালান ইস্যু'),'906',I.invoices,'#7c3aed','#faf5ff'],[T('Products added','পণ্য যোগ'),'312',I.box,'#2563eb','#eff6ff'],[T('Losses approved','ক্ষতি অনুমোদিত'),'48',I.warn,'#dc2626','#fef2f2']];
     const activity=[['Approved loss LW-088 (Insulin Novomix 30)','2026-08-21 09:12',I.warn,'#dc2626','#fef2f2'],['Created invoice INV-2042 for Sunrise Clinic','2026-08-20 16:40',I.invoices,'#7c3aed','#faf5ff'],['Received goods for PO-1180 from Beximco','2026-08-19 11:05',I.purchases,'#2563eb','#eff6ff'],['Completed production PRD-051','2026-08-19 08:30',I.production,'#ea580c','#fff7ed'],['Signed in from Dhaka, Bangladesh','2026-08-19 08:02',I.shield,'#169B62','#e7f6ef']];
-    const sessions=[['Chrome · Windows','Dhaka, Bangladesh','Active now',true],['Safari · iPhone 14','Dhaka, Bangladesh','2 hours ago',false],['Chrome · Android','Chittagong, Bangladesh','3 days ago',false]];
+    const sessions=this.state.sessions||[];
     return this.h('div',{style:{maxWidth:1120,margin:'0 auto'}},
       this.pageHead(T('My profile','আমার প্রোফাইল'),T('Manage your personal details, security and activity.','আপনার তথ্য, সিকিউরিটি ও অ্যাক্টিভিটি পরিচালনা করুন।'),[this.btn(T('Save changes','সেভ করুন'),{icon:I.check,onClick:()=>this.toast(T('Profile updated','প্রোফাইল আপডেট হয়েছে'))})]),
       this.card([
         this.h('div',{key:'hdr',style:{display:'flex',alignItems:'center',gap:20,flexWrap:'wrap'}},
-          this.h('div',{onClick:this.openPhoto,title:T('Change photo','ছবি পরিবর্তন'),style:{width:82,height:82,borderRadius:22,background:this.state.avatarColor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:28,flexShrink:0,cursor:'pointer'}},'RA'),
+          (this.state.me&&this.state.me.avatarUrl)
+            ?this.h('img',{onClick:this.openPhoto,title:T('Change photo','ছবি পরিবর্তন'),src:this.state.me.avatarUrl,style:{width:82,height:82,borderRadius:22,objectFit:'cover',flexShrink:0,cursor:'pointer'}})
+            :this.h('div',{onClick:this.openPhoto,title:T('Change photo','ছবি পরিবর্তন'),style:{width:82,height:82,borderRadius:22,background:this.state.avatarColor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:28,flexShrink:0,cursor:'pointer'}},'RA'),
           this.h('div',{style:{flex:1,minWidth:200}},
             this.h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},this.h('span',{style:{fontSize:22,fontWeight:800,letterSpacing:'-.01em'}},'Rahim Ahmed'),this.badge(T('Business Owner','ব্যবসার মালিক'),'#0E5A3D','#e7f6ef')),
             this.h('div',{style:{fontSize:13.5,color:'var(--muted)',marginTop:4}},'rahim@lifeline.bd  ·  +880 1711-223344'),
@@ -2523,7 +2664,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.h('div',{style:{display:'flex',gap:8}},this.btn(T('Change photo','ছবি পরিবর্তন'),{variant:'ghost',size:'sm',onClick:this.openPhoto}),this.btn(T('Sign out','সাইন আউট'),{variant:'ghost',size:'sm',onClick:this.signOut})))
       ],{padding:24,marginBottom:16}),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}},stats.map((x,i)=>this.kpi({label:x[0],value:x[1],icon:x[2],iconBg:x[4],iconColor:x[3]}))),
-      this.h('div',{style:{display:'flex',gap:4,marginBottom:20,borderBottom:'1px solid var(--border)'}},tabs.map((t,i)=>this.h('button',{key:i,onClick:()=>this.setState({profTab:t[0]}),style:{padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:14,fontWeight:700,color:tab===t[0]?'var(--accent-text)':'var(--muted)',borderBottom:'2px solid '+(tab===t[0]?'#169B62':'transparent'),marginBottom:-1}},t[1]))),
+      this.h('div',{style:{display:'flex',gap:4,marginBottom:20,borderBottom:'1px solid var(--border)'}},tabs.map((t,i)=>this.h('button',{key:i,onClick:()=>{this.setState({profTab:t[0]});if(t[0]==='security')this.loadSessions()},style:{padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:14,fontWeight:700,color:tab===t[0]?'var(--accent-text)':'var(--muted)',borderBottom:'2px solid '+(tab===t[0]?'#169B62':'transparent'),marginBottom:-1}},t[1]))),
       tab==='overview'?this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}},
         this.card([this.h('div',{key:'h',style:{fontSize:16,fontWeight:800,marginBottom:16}},T('Personal details','ব্যক্তিগত তথ্য')),
           this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
@@ -2544,9 +2685,13 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
           this.card([this.h('div',{key:'h',style:{fontSize:16,fontWeight:800,marginBottom:14}},T('Two-factor authentication','দুই-স্তর নিরাপত্তা')),
             this.h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:13.5}},this.h('div',null,this.h('div',{style:{fontWeight:600}},T('SMS verification','এসএমএস যাচাই')),this.h('div',{style:{fontSize:12,color:'var(--muted)',marginTop:2}},'+880 1711-223344')),this.h('span',{onClick:()=>this.toast(T('2FA enabled','2FA চালু হয়েছে')),style:{width:38,height:22,borderRadius:20,background:'var(--border)',position:'relative',cursor:'pointer'}},this.h('span',{style:{position:'absolute',top:2,left:2,width:18,height:18,borderRadius:50,background:'#fff'}})))],{padding:22}),
           this.card([this.h('div',{key:'h',style:{fontSize:16,fontWeight:800,marginBottom:6}},T('Active sessions','সক্রিয় সেশন')),
-            ...sessions.map((s,i)=>this.h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 0',borderBottom:i<2?'1px solid var(--border)':'none'}},
-              this.h('div',null,this.h('div',{style:{fontSize:13.5,fontWeight:700}},s[0]),this.h('div',{style:{fontSize:12,color:'var(--muted)'}},s[1]+' · '+s[2])),
-              s[3]?this.badge(T('This device','এই ডিভাইস'),'#0E5A3D','#e7f6ef'):this.h('span',{onClick:()=>this.toast(T('Session revoked','সেশন বাতিল')),style:{fontSize:12.5,color:'#dc2626',fontWeight:700,cursor:'pointer'}},T('Revoke','বাতিল'))))],{padding:22})))
+            this.state.sessionsLoading&&!sessions.length
+              ?this.h('div',{style:{padding:'14px 0',fontSize:13,color:'var(--muted)'}},T('Loading sessions…','সেশন লোড হচ্ছে…'))
+              :!sessions.length
+                ?this.h('div',{style:{padding:'14px 0',fontSize:13,color:'var(--muted)'}},T('No active sessions found.','কোনো সক্রিয় সেশন পাওয়া যায়নি।'))
+                :sessions.map((s,i)=>this.h('div',{key:s.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 0',borderBottom:i<sessions.length-1?'1px solid var(--border)':'none'}},
+                  this.h('div',null,this.h('div',{style:{fontSize:13.5,fontWeight:700}},this.deviceLabel(s.userAgent)),this.h('div',{style:{fontSize:12,color:'var(--muted)'}},(s.ip?s.ip+' · ':'')+this.timeAgo(s.lastSeenAt))),
+                  s.current?this.badge(T('This device','এই ডিভাইস'),'#0E5A3D','#e7f6ef'):this.h('span',{onClick:this.revokeSession(s.id),style:{fontSize:12.5,color:'#dc2626',fontWeight:700,cursor:'pointer'}},T('Revoke','বাতিল'))))],{padding:22})))
       :this.card([this.h('div',{key:'h',style:{fontSize:16,fontWeight:800,padding:'20px 22px 8px'}},T('Recent activity','সাম্প্রতিক অ্যাক্টিভিটি')),
         this.h('div',{key:'l',style:{padding:'0 22px 20px'}},activity.map((a,i)=>this.h('div',{key:i,style:{display:'flex',gap:13,alignItems:'flex-start',padding:'12px 0',borderBottom:i<activity.length-1?'1px solid var(--border)':'none'}},
           this.h('span',{style:{width:34,height:34,borderRadius:9,background:'color-mix(in srgb, '+a[3]+' 16%, transparent)',color:a[3],display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},dangerouslySetInnerHTML:{__html:a[2]}}),
@@ -3191,7 +3336,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       const opts=[['pharmacy','Pharmacy','Batches, expiry dates, FEFO allocation & recall reports',I.pill,'#169B62','#e7f6ef'],['restaurant','Restaurant','Recipes, ingredient deduction & kitchen waste tracking',I.chef,'#ea580c','#fff7ed'],['retail','Retail Shop','Variants, barcode POS & wholesale pricing',I.store,'#2563eb','#eff6ff']];
       return this.h('div',{style:{display:'flex',flexDirection:'column',gap:12}},opts.map((o,i)=>{const sel=s.industry===o[0];return this.h('div',{key:i,onClick:this.onboIndustry(o[0]),style:{display:'flex',alignItems:'center',gap:14,padding:'16px 18px',borderRadius:14,cursor:'pointer',border:'2px solid '+(sel?'#169B62':'var(--border)'),background:sel?'color-mix(in srgb, #169B62 12%, transparent)':'var(--surface)',transition:'.12s'}},this.h('span',{style:{width:46,height:46,borderRadius:12,background:o[4],color:o[3],display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},dangerouslySetInnerHTML:{__html:o[3]}}),this.h('div',{style:{flex:1}},this.h('div',{style:{fontSize:16,fontWeight:800}},o[1]),this.h('div',{style:{fontSize:13,color:'var(--muted)',marginTop:2}},o[2])),this.h('span',{style:{width:24,height:24,borderRadius:50,border:'2px solid '+(sel?'#169B62':'var(--border)'),background:sel?'#169B62':'var(--surface)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff'},dangerouslySetInnerHTML:sel?{__html:I.check}:undefined}))}));
     }
-    if(step===3)return this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}},this.field('Business name',{value:s.obForm.bizName||this.term.biz,onChange:this.setObField('bizName'),span:2}),this.field('Business type',{type:'select',value:this.term.label,opts:['Pharmacy','Restaurant','Retail Shop']}),this.field('Phone',{value:'+880 1711-223344'}),this.field('Address',{value:s.obForm.address||'123 Green Road, Dhaka 1205',onChange:this.setObField('address'),span:2}),this.field('BIN / Tax ID',{value:'004521789'}),this.field('Email',{value:'hello@'+this.term.biz.toLowerCase().replace(/[^a-z]/g,'')+'.bd'}));
+    if(step===3)return this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}},this.field('Business name',{value:s.obForm.bizName??this.term.biz,onChange:this.setObField('bizName'),span:2}),this.field('Business type',{type:'select',value:this.term.label,opts:['Pharmacy','Restaurant','Retail Shop']}),this.field('Phone',{value:'+880 1711-223344'}),this.field('Address',{value:s.obForm.address??'123 Green Road, Dhaka 1205',onChange:this.setObField('address'),span:2}),this.field('BIN / Tax ID',{value:'004521789'}),this.field('Email',{value:'hello@'+this.term.biz.toLowerCase().replace(/[^a-z]/g,'')+'.bd'}));
     if(step===4)return this.h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}},this.field('Currency',{type:'select',value:'BDT (\u09f3) — Bangladeshi Taka',opts:['BDT (\u09f3) — Bangladeshi Taka','USD ($)','INR (\u20b9)','EUR (\u20ac)'],span:2,hint:'Default currency for all prices and reports.'}),this.field('Tax system',{type:'select',value:'VAT 5%',opts:['VAT 5%','VAT 7.5%','VAT 15%','GST 18%','No tax']}),this.field('Tax number',{value:'004521789'}),this.field('Timezone',{type:'select',value:'Asia/Dhaka (GMT+6)',opts:['Asia/Dhaka (GMT+6)','Asia/Kolkata (GMT+5:30)','UTC'],span:2}));
     if(step===5){
       const branches=s.obForm.branches||[{name:'Main branch',type:'Retail outlet',location:''}];
@@ -3211,7 +3356,8 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       this.field('Full name',{value:s.obForm.name,onChange:this.setObField('name'),req:true,span:2}),
       this.field('Work email',{value:s.obForm.email,onChange:this.setObField('email'),req:true,span:2}),
       this.field('Password',{value:s.obForm.pw,onChange:this.setObField('pw'),ph:'Create a password',req:true}),
-      this.h('div',{key:'tos',style:{gridColumn:'span 2',fontSize:12.5,color:'var(--muted)',marginTop:2}},'By continuing you agree to StockFlow\u2019s Terms & Privacy Policy.'));
+      this.h('div',{key:'tos',style:{gridColumn:'span 2',fontSize:12.5,color:'var(--muted)',marginTop:2}},'By continuing you agree to StockFlow\u2019s Terms & Privacy Policy.'),
+      this.h('div',{key:'signin',style:{gridColumn:'span 2',textAlign:'center',fontSize:13.5,color:'var(--muted)',marginTop:6}},'Already have an account? ',this.h('span',{onClick:this.onboBack,style:{color:'#169B62',fontWeight:700,cursor:'pointer'}},'Sign in')));
   }
 
   renderVals(){
@@ -3286,18 +3432,27 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
       heroQuoteName:T('Shirin Akhter','শিরিন আক্তার'), heroQuoteRole:T('Owner, Lifeline Pharmacy · Dhaka','মালিক, লাইফলাইন ফার্মেসি · ঢাকা'),
       heroChips:[{label:T('Pharmacy','ফার্মেসি'),icon:this.icn(I.pill)},{label:T('Restaurant','রেস্তোরাঁ'),icon:this.icn(I.chef)},{label:T('Retail','খুচরা'),icon:this.icn(I.store)},{label:T('Bank-grade security','ব্যাংক-গ্রেড নিরাপত্তা'),icon:this.icn(I.shield)}].map((x,i)=>({...x,delay:(0.72+i*0.08)+'s'})),
       authTagline:T('Inventory made simple','ইনভেন্টরি সহজ করা'),
-      authTitle:T('Welcome back','আবার স্বাগতম'),
-      authSubtitle:T('Sign in to your Bhandar360 account','আপনার Bhandar360 অ্যাকাউন্টে সাইন ইন করুন'),
+      showSignin:s.authView!=='forgot'&&s.authView!=='reset',
+      showForgot:s.authView==='forgot',
+      showReset:s.authView==='reset',
+      authTitle:s.authView==='forgot'?T('Reset your password','পাসওয়ার্ড রিসেট করুন'):s.authView==='reset'?T('Choose a new password','নতুন পাসওয়ার্ড দিন'):T('Welcome back','আবার স্বাগতম'),
+      authSubtitle:s.authView==='forgot'?T('Enter your email and we’ll send you a reset link.','ইমেইল দিন, আমরা রিসেট লিংক পাঠাবো।'):s.authView==='reset'?T('Your new password must be at least 8 characters.','নতুন পাসওয়ার্ড অন্তত ৮ অক্ষরের হতে হবে।'):T('Sign in to your Bhandar360 account','আপনার Bhandar360 অ্যাকাউন্টে সাইন ইন করুন'),
       emailLabel:T('Email address','ইমেইল'), pwLabel:T('Password','পাসওয়ার্ড'),
+      newPwLabel:T('New password','নতুন পাসওয়ার্ড'), confirmPwLabel:T('Confirm new password','পাসওয়ার্ড নিশ্চিত করুন'),
       forgotLabel:T('Forgot password?','পাসওয়ার্ড ভুলে গেছেন?'),
       rememberLabel:T('Keep me signed in','আমাকে সাইন ইন রাখুন'),
       signInLabel:s.authBusy?T('Signing in…','সাইন ইন হচ্ছে…'):T('Sign in','সাইন ইন'), orLabel:T('or','অথবা'),
-      googleLabel:T('Continue with Google','Google দিয়ে চালিয়ে যান'),
+      forgotSubmitLabel:s.authBusy?T('Sending…','পাঠানো হচ্ছে…'):T('Send reset link','রিসেট লিংক পাঠান'),
+      resetSubmitLabel:s.authBusy?T('Updating…','আপডেট হচ্ছে…'):T('Update password','পাসওয়ার্ড আপডেট করুন'),
+      backToSigninLabel:T('Back to sign in','সাইন ইনে ফিরে যান'),
+      authMsg:s.authMsg,
+      openForgot:this.openForgot, backToSignin:this.backToSignin,
+      onForgotEmail:this.onForgotEmail, onResetPw:this.onResetPw, onResetPw2:this.onResetPw2,
+      submitForgot:this.submitForgot, submitReset:this.submitReset,
       noAccountLabel:T('New to Bhandar360?','Bhandar360 এ নতুন?'), createLabel:T('Create an account','অ্যাকাউন্ট তৈরি করুন'),
       onEmail:(e)=>{this._email=e.target.value}, onPw:(e)=>{this._pw=e.target.value},
       remember:s.remember, onRemember:()=>this.setState(x=>({remember:!x.remember})),
       signIn:this.signIn, goSignup:this.goSignup,
-      googleIcon:this.googleSvg, googleIconNode:this.icn(this.googleSvg),
       isOnboarding:s.phase==='onboarding',
       isApp:s.phase==='app',
       currentView:s.view+s.industry,

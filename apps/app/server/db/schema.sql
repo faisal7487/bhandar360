@@ -25,8 +25,28 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'owner',
   avatar_color TEXT NOT NULL DEFAULT 'linear-gradient(135deg,#169B62,#0d9488)',
+  avatar_url TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
 );
+-- Existing databases created before profile photo upload was added.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+-- One row per signed-in device/browser (created at signup/signin, not on every
+-- request) so Settings -> Security can list and revoke real active sessions
+-- instead of the placeholder device list it originally shipped with. The JWT
+-- auth cookie carries this row's id as its `sid` claim; a revoked or missing
+-- row makes the cookie unauthenticated even though the JWT signature is
+-- still valid.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  user_agent TEXT,
+  ip TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  last_seen_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions (user_id);
 
 CREATE TABLE IF NOT EXISTS memberships (
   id SERIAL PRIMARY KEY,
@@ -288,6 +308,19 @@ CREATE TABLE IF NOT EXISTS team_members (
   status TEXT NOT NULL DEFAULT 'pending', -- pending | active
   invited_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
 );
+
+-- "Forgot password" flow: a token is emailed to the user and only its SHA-256
+-- hash is stored, mirroring how the password itself is never stored in the
+-- clear. Tokens are single-use (used_at) and short-lived (expires_at).
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens (user_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,

@@ -5,7 +5,11 @@ const { loadUser } = require('./middleware/auth');
 
 const app = express();
 
-app.use(express.json());
+// Default 100kb body limit rejects a bulk CSV product import ("request
+// entity too large") as soon as a catalogue has a few hundred rows — the
+// items array, JSON-encoded, runs several times larger than the CSV text
+// itself. Also covers a base64-encoded avatar upload (~2MB image -> ~2.7MB).
+app.use(express.json({ limit: '8mb' }));
 app.use(cookieParser());
 app.use(loadUser);
 
