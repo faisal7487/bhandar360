@@ -2422,15 +2422,281 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
   }
 
   // ============ REPORTS ============
+  reportPeriods=[['all','All time'],['today','Today'],['week','Last 7 days'],['month','This month'],['year','This year']];
+  inReportPeriod(d){const p=this.state.reportPeriod||'all';return p==='all'||this.inDateRange(d,p)}
+  reportPeriodLabel(){const p=this.state.reportPeriod||'all';return (this.reportPeriods.find(x=>x[0]===p)||this.reportPeriods[0])[1]}
+  get vatRate(){const b=this.state.me&&this.state.me.business;const r=b?Number(b.taxRate):NaN;return isFinite(r)?r:5}
+  loadScript(src){
+    this._scripts=this._scripts||{};
+    if(!this._scripts[src])this._scripts[src]=new Promise((res,rej)=>{
+      const s=document.createElement('script');s.src=src;s.onload=res;
+      s.onerror=()=>{delete this._scripts[src];s.remove();rej(new Error('Could not load '+src))};
+      document.head.appendChild(s);
+    });
+    return this._scripts[src];
+  }
+  // Each report is {title, sub, periodless, cols:[[label,kind]], rows:[[...]], total:[...]|null}.
+  // kind: '' text · 'n' number · 'm' money · 'p' percent. Values stay raw numbers so
+  // CSV/Excel keep them sortable; only the PDF formats them.
+  async buildReport(name){
+    const D=this.state.data, inP=d=>this.inReportPeriod(d);
+    const r2=n=>Math.round((Number(n)||0)*100)/100, day=s=>(s||'').slice(0,10), num=n=>Number(n)||0;
+    const totals=(rows,n,idx,label='Total')=>{const t=Array(n).fill('');t[0]=label;idx.forEach(i=>{t[i]=r2(rows.reduce((a,r)=>a+num(r[i]),0))});return t};
+    const products=D.products||[];
+    const productFor=it=>products.find(p=>it.product_id!=null&&p.id===it.product_id)||products.find(p=>p.name===it.name);
+    const sales=(D.sales||[]).filter(s=>inP(day(s.created_at)));
+    const vat=this.vatRate, vatOf=t=>r2(num(t)*vat/(100+vat));
+    const ageDays=s=>s?Math.max(0,Math.floor((Date.now()-new Date(day(s)))/864e5)):0;
+    const byDateDesc=(a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''));
+    // Units sold / revenue / COGS per product across the period's sales.
+    const soldByProduct=()=>{
+      const m=new Map();
+      sales.forEach(s=>(s.items||[]).forEach(it=>{
+        const p=productFor(it), key=p?'p'+p.id:'n'+it.name;
+        const e=m.get(key)||{name:p?p.name:it.name,product:p,qty:0,revenue:0,cogs:0,last:''};
+        const q=num(it.qty);e.qty+=q;e.revenue+=q*num(it.price);e.cogs+=q*(p?num(p.cost_price):0);
+        if(day(s.created_at)>e.last)e.last=day(s.created_at);
+        m.set(key,e);
+      }));
+      return m;
+    };
+    const courierRate=prov=>(this.couriers.find(c=>c.name===prov)||{}).charge||0;
+    const deliveries=(D.deliveries||[]).filter(d=>inP(day(d.created_at)));
+    switch(name){
+      case 'Inventory valuation':{
+        const cols=[['Product'],['SKU'],['Category'],['Warehouse'],['Stock','n'],['Unit'],['Cost price','m'],['Value at cost','m'],['Sale price','m'],['Value at sale price','m']];
+        const rows=[...products].sort((a,b)=>(a.category||'General').localeCompare(b.category||'General')||a.name.localeCompare(b.name)).map(p=>{
+          const q=num(p.stock_qty);return [p.name,p.sku||'',p.category||'General',p.warehouse_name||'',q,p.unit||'',num(p.cost_price),r2(q*num(p.cost_price)),num(p.sale_price),r2(q*num(p.sale_price))];
+        });
+        return {title:name,sub:'Current stock on hand',periodless:true,cols,rows,total:totals(rows,cols.length,[4,7,9])};
+      }
+      case 'Sales report':{
+        const cols=[['Date'],['Time'],['Sale #'],['Customer'],['Branch'],['Method'],['Status'],['Items','n'],['Net (ex-VAT)','m'],['VAT','m'],['Total','m'],['Paid','m'],['Due','m']];
+        const rows=[...sales].sort(byDateDesc).map(s=>{
+          const t=num(s.total),paid=s.paid_amount!=null?num(s.paid_amount):t;
+          return [day(s.created_at),(s.created_at||'').slice(11,16),s.code,s.customer_name||'Walk-in',s.branch_name||'',s.method||'Cash',!s.status||s.status==='completed'?'Paid':s.status,(s.items||[]).reduce((a,i)=>a+num(i.qty),0),r2(t-vatOf(t)),vatOf(t),t,paid,r2(Math.max(0,t-paid))];
+        });
+        return {title:name,sub:'VAT at '+vat+'% (included in totals)',cols,rows,total:totals(rows,cols.length,[7,8,9,10,11,12])};
+      }
+      case 'Gross profit':{
+        const cols=[['Product'],['Qty sold','n'],['Revenue (ex-VAT)','m'],['Cost of goods sold','m'],['Gross profit','m'],['Margin','p']];
+        const rows=[...soldByProduct().values()].sort((a,b)=>(b.revenue-b.cogs)-(a.revenue-a.cogs)).map(e=>[e.name,e.qty,r2(e.revenue),r2(e.cogs),r2(e.revenue-e.cogs),e.revenue?r2((e.revenue-e.cogs)/e.revenue*100):0]);
+        const total=totals(rows,cols.length,[1,2,3,4]);total[5]=total[2]?r2(total[4]/total[2]*100):0;
+        return {title:name,sub:'COGS uses each product’s current cost price',cols,rows,total};
+      }
+      case 'Purchases report':{
+        const cols=[['Date'],['PO #'],['Supplier'],['Status'],['Lines','n'],['Units','n'],['Total','m']];
+        const st={pending:'Ordered',partial:'Partial',received:'Received',cancelled:'Cancelled'};
+        const pos=(D.purchaseOrders||[]).filter(p=>inP(day(p.created_at))).sort(byDateDesc);
+        const rows=pos.map(p=>[day(p.created_at),p.code,p.supplier_name||'',st[p.status]||p.status,(p.items||[]).length,(p.items||[]).reduce((a,i)=>a+num(i.qty),0),num(p.total)]);
+        return {title:name,sub:'Purchase orders by supplier',cols,rows,total:totals(rows,cols.length,[4,5,6])};
+      }
+      case 'Expiring stock':{
+        const cols=[['Product'],['Batch'],['Expiry date'],['Days left','n'],['Status'],['Stock','n'],['Value at cost','m']];
+        const rows=products.filter(p=>p.expiry_date&&this.daysTo(p.expiry_date)<=180).sort((a,b)=>String(a.expiry_date).localeCompare(String(b.expiry_date))).map(p=>{
+          const d=this.daysTo(p.expiry_date),q=num(p.stock_qty);
+          return [p.name,p.batch_no||'',p.expiry_date,d,d<0?'Expired':d<=30?'Within 30 days':d<=90?'Within 90 days':'Within 180 days',q,r2(q*num(p.cost_price))];
+        });
+        return {title:name,sub:'Expired or expiring within 180 days, soonest first (FEFO)',periodless:true,cols,rows,total:totals(rows,cols.length,[5,6])};
+      }
+      case 'Losses & waste':{
+        const cols=[['Date'],['Ref'],['Product'],['Qty','n'],['Reason'],['Branch'],['Reported by'],['Status'],['Value','m']];
+        const rows=this.losses.filter(l=>inP(l.date)).map(l=>[l.date,l.id,l.product,num(l.qty),l.reason,l.branch,l.by,l.status,l.value]);
+        return {title:name,sub:'Value at product cost price',cols,rows,total:totals(rows,cols.length,[3,8])};
+      }
+      case 'Stock movement':{
+        const r=await this.api('/api/reports/stock-movements');
+        const saleCode=id=>((D.sales||[]).find(s=>s.id===id)||{}).code, poCode=id=>((D.purchaseOrders||[]).find(p=>p.id===id)||{}).code;
+        const refLabel=m=>m.ref_type==='sale'?(saleCode(m.ref_id)||'Sale #'+m.ref_id):m.ref_type==='purchase_order'||m.type==='purchase'?(poCode(m.ref_id)||'PO #'+(m.ref_id||'')):m.ref_type==='initial_stock'?'Opening stock':m.ref_type==='csv_import'?'CSV import':(m.ref_type||'')+(m.ref_id?' #'+m.ref_id:'');
+        const cols=[['Date'],['Time'],['Product'],['SKU'],['Type'],['Qty in','n'],['Qty out','n'],['Unit'],['Reference']];
+        const rows=(r.items||[]).filter(m=>inP(day(m.created_at))).map(m=>{const q=num(m.qty);return [day(m.created_at),(m.created_at||'').slice(11,16),m.product_name,m.sku||'',m.type.charAt(0).toUpperCase()+m.type.slice(1),q>0?q:'',q<0?-q:'',m.unit||'',refLabel(m)]});
+        return {title:name,sub:'In/out ledger per product',cols,rows,total:totals(rows,cols.length,[5,6])};
+      }
+      case 'Product performance':{
+        const sold=soldByProduct();
+        const list=products.map(p=>({p,e:sold.get('p'+p.id)||{qty:0,revenue:0,last:''}})).sort((a,b)=>b.e.qty-a.e.qty||b.e.revenue-a.e.revenue);
+        const withSales=list.filter(x=>x.e.qty>0).length;
+        const cols=[['Rank','n'],['Product'],['Category'],['Qty sold','n'],['Revenue (ex-VAT)','m'],['Last sold'],['Stock on hand','n'],['Movement']];
+        const rows=list.map((x,i)=>[i+1,x.p.name,x.p.category||'General',x.e.qty,r2(x.e.revenue),x.e.last||'',num(x.p.stock_qty),x.e.qty===0?'No sales':i<Math.ceil(withSales*0.2)?'Fast mover':i>=Math.floor(withSales*0.8)?'Slow mover':'Steady']);
+        const total=totals(rows,cols.length,[3,4,6]);total[0]='Total';
+        return {title:name,sub:'Fast movers = top 20% by units sold, slow movers = bottom 20%',cols,rows,total};
+      }
+      case 'Tax summary':{
+        const m=new Map();
+        sales.forEach(s=>{const k=(s.created_at||'').slice(0,7);const e=m.get(k)||{n:0,gross:0};e.n++;e.gross+=num(s.total);m.set(k,e)});
+        const cols=[['Month'],['Sales','n'],['Gross sales (incl. VAT)','m'],['Net sales','m'],['VAT collected / payable','m']];
+        const rows=[...m.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([k,e])=>[k,e.n,r2(e.gross),r2(e.gross-vatOf(e.gross)),vatOf(e.gross)]);
+        return {title:name,sub:'VAT at '+vat+'% (included in sale totals)',cols,rows,total:totals(rows,cols.length,[1,2,3,4])};
+      }
+      case 'Supplier balances':{
+        const pos=D.purchaseOrders||[];
+        const cols=[['Supplier'],['Phone'],['Email'],['Total purchased','m'],['Open POs','n'],['Oldest open PO (days)','n'],['Amount due','m']];
+        const rows=(D.suppliers||[]).map(s=>{
+          const mine=pos.filter(p=>p.supplier_id===s.id||(!p.supplier_id&&p.supplier_name===s.name));
+          const open=mine.filter(p=>p.status==='pending'||p.status==='partial');
+          return [s.name,s.phone||'',s.email||'',r2(mine.filter(p=>p.status!=='cancelled').reduce((a,p)=>a+num(p.total),0)),open.length,open.length?Math.max(...open.map(p=>ageDays(p.created_at))):'',Math.max(0,num(s.balance))];
+        }).sort((a,b)=>b[6]-a[6]);
+        return {title:name,sub:'Accounts payable',periodless:true,cols,rows,total:totals(rows,cols.length,[3,4,6])};
+      }
+      case 'Customer balances':{
+        // Receivables ageing from unpaid (sent / overdue) invoices, bucketed by invoice age.
+        const m=new Map();
+        (D.customers||[]).forEach(c=>m.set('c'+c.id,{name:c.name,phone:c.phone||'',limit:num(c.credit_limit),bal:num(c.balance),n:0,b:[0,0,0,0]}));
+        (D.invoices||[]).filter(i=>i.status!=='paid'&&i.status!=='draft').forEach(i=>{
+          const key=i.customer_id!=null&&m.has('c'+i.customer_id)?'c'+i.customer_id:'n'+(i.customer_name||'Walk-in');
+          const e=m.get(key)||{name:i.customer_name||'Walk-in',phone:i.customer_phone||'',limit:0,bal:0,n:0,b:[0,0,0,0]};
+          const a=ageDays(i.created_at);e.n++;e.b[a<=30?0:a<=60?1:a<=90?2:3]+=num(i.total);m.set(key,e);
+        });
+        const cols=[['Customer'],['Phone'],['Credit limit','m'],['Account balance','m'],['Unpaid invoices','n'],['0-30 days','m'],['31-60 days','m'],['61-90 days','m'],['90+ days','m'],['Total outstanding','m']];
+        const rows=[...m.values()].map(e=>[e.name,e.phone,e.limit,e.bal,e.n,...e.b.map(r2),r2(e.b.reduce((a,b)=>a+b,0))]).sort((a,b)=>b[9]-a[9]||b[3]-a[3]);
+        return {title:name,sub:'Accounts receivable ageing (unpaid invoices by age)',periodless:true,cols,rows,total:totals(rows,cols.length,[3,4,5,6,7,8,9])};
+      }
+      case 'Branch performance':{
+        const losses=(D.losses||[]).filter(l=>l.status==='approved'&&inP(day(l.created_at)));
+        const list=[...this.branches.map(b=>({id:b.id,name:b.name})),{id:null,name:'Unassigned'}];
+        const cols=[['Branch'],['Sales','n'],['Revenue','m'],['Average sale','m'],['Collected','m'],['Losses (approved)','m'],['Deliveries','n']];
+        const rows=list.map(b=>{
+          const bs=sales.filter(s=>(s.branch_id||null)===b.id), rev=bs.reduce((a,s)=>a+num(s.total),0);
+          return [b.name,bs.length,r2(rev),bs.length?r2(rev/bs.length):0,r2(bs.reduce((a,s)=>a+(s.paid_amount!=null?num(s.paid_amount):num(s.total)),0)),r2(losses.filter(l=>(l.branch_id||null)===b.id).reduce((a,l)=>a+num(l.qty)*num(l.product_cost),0)),deliveries.filter(d=>(d.branch_id||null)===b.id).length];
+        }).filter(r=>r[0]!=='Unassigned'||r[1]||r[5]||r[6]);
+        const total=totals(rows,cols.length,[1,2,4,5,6]);total[3]=total[1]?r2(total[2]/total[1]):0;
+        return {title:name,sub:'Compare locations',cols,rows,total};
+      }
+      case 'Delivery performance':{
+        const m=new Map();
+        deliveries.forEach(d=>{const k=d.provider||'Unassigned';const e=m.get(k)||{n:0,ok:0,fail:0,cod:0};e.n++;if(d.status==='delivered')e.ok++;else if(d.status==='failed')e.fail++;e.cod+=num(d.cod_amount);m.set(k,e)});
+        const cols=[['Courier'],['Deliveries','n'],['Delivered','n'],['Failed','n'],['In progress','n'],['Success rate','p'],['COD value','m']];
+        const rows=[...m.entries()].sort((a,b)=>b[1].n-a[1].n).map(([k,e])=>[k,e.n,e.ok,e.fail,e.n-e.ok-e.fail,e.ok+e.fail?r2(e.ok/(e.ok+e.fail)*100):'',r2(e.cod)]);
+        const total=totals(rows,cols.length,[1,2,3,4,6]);total[5]=total[2]+total[3]?r2(total[2]/(total[2]+total[3])*100):'';
+        return {title:name,sub:'Success rate = delivered / (delivered + failed)',cols,rows,total};
+      }
+      case 'COD collections':{
+        const cols=[['Date'],['Delivery'],['Order ref'],['Customer'],['Courier'],['COD amount','m'],['Delivery charge','m'],['Net settlement','m'],['Status']];
+        const rows=deliveries.filter(d=>num(d.cod_amount)>0).sort(byDateDesc).map(d=>{const c=num(d.cod_amount),ch=courierRate(d.provider),ok=d.status==='delivered';return [day(d.created_at),'DLV-'+String(d.id).padStart(4,'0'),d.order_ref||'',d.customer_name||'',d.provider||'',c,ch,ok?r2(c-ch):'',ok?'Collected':d.status==='failed'?'Failed / returned':'Outstanding']});
+        const total=totals(rows,cols.length,[5,6,7]);
+        return {title:name,sub:'Collected = delivered (net of charge); outstanding = not yet delivered',cols,rows,total};
+      }
+      case 'Courier charges':{
+        const m=new Map();
+        deliveries.forEach(d=>{const k=d.provider||'Unassigned';const e=m.get(k)||{n:0,ok:0,ret:0};e.n++;if(d.status==='delivered')e.ok++;if(d.status==='failed')e.ret++;m.set(k,e)});
+        const cols=[['Courier'],['Deliveries','n'],['Delivered','n'],['Failed / returned','n'],['Rate per delivery','m'],['Total charges','m']];
+        const rows=[...m.entries()].map(([k,e])=>[k,e.n,e.ok,e.ret,courierRate(k),r2(e.n*courierRate(k))]).sort((a,b)=>b[5]-a[5]);
+        return {title:name,sub:'Charges at each courier’s standard rate',cols,rows,total:totals(rows,cols.length,[1,2,3,5])};
+      }
+    }
+    throw new Error('Unknown report');
+  }
+  reportFileName(rep,ext){
+    const slug=s=>String(s).toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    return slug(rep.title)+(rep.periodless?'':'-'+slug(this.reportPeriodLabel()))+'-'+new Date().toISOString().slice(0,10)+'.'+ext;
+  }
+  saveBlob(blob,filename){
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  reportHeading(rep){
+    const biz=(this.state.me&&this.state.me.business&&this.state.me.business.name)||'Bhandar360';
+    return [biz+' — '+rep.title,(rep.periodless?'As of '+new Date().toISOString().slice(0,10):'Period: '+this.reportPeriodLabel())+(rep.sub?' · '+rep.sub:'')];
+  }
+  exportReportCsv(rep){
+    const esc=v=>{const s=v==null?'':String(v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+    const lines=[rep.cols.map(c=>c[0]),...rep.rows];if(rep.total)lines.push(rep.total);
+    this.saveBlob(new Blob(['﻿'+lines.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8;'}),this.reportFileName(rep,'csv'));
+  }
+  async exportReportXlsx(rep){
+    try{await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js')}catch(e){}
+    const X=window.XLSX;
+    if(!X){
+      // Offline / CDN blocked: Excel still opens an HTML table saved as .xls.
+      this.saveBlob(new Blob(['﻿'+this.reportTableHtml(rep,false)],{type:'application/vnd.ms-excel'}),this.reportFileName(rep,'xls'));
+      return;
+    }
+    const [h1,h2]=this.reportHeading(rep);
+    const aoa=[[h1],[h2],[],rep.cols.map(c=>c[0]),...rep.rows];if(rep.total)aoa.push(rep.total);
+    const ws=X.utils.aoa_to_sheet(aoa);
+    ws['!cols']=rep.cols.map((c,i)=>({wch:Math.min(40,Math.max(c[0].length,...aoa.slice(3).map(r=>String(r[i]==null?'':r[i]).length))+2)}));
+    // Number formats for money / percent columns (data starts on row 5 → index 4).
+    for(let r=4;r<aoa.length;r++)rep.cols.forEach((c,i)=>{const cell=ws[X.utils.encode_cell({r,c:i})];if(cell&&cell.t==='n'){if(c[1]==='m')cell.z='#,##0.00';else if(c[1]==='p')cell.z='0.0"%"'}});
+    const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,rep.title.replace(/[\\/?*[\]:]/g,'').slice(0,31));
+    X.writeFile(wb,this.reportFileName(rep,'xlsx'));
+  }
+  reportCell(v,kind){
+    if(v===''||v==null)return '';
+    if(kind==='m')return this.moneyPdf(v);
+    if(kind==='p')return (Number(v)||0).toFixed(1)+'%';
+    if(kind==='n')return (Number(v)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+    return String(v);
+  }
+  reportTableHtml(rep,forPrint){
+    const [h1,h2]=this.reportHeading(rep), e=s=>this.esc(s);
+    const cell=(v,c,tag)=>'<'+tag+(c[1]?' class="r"':'')+'>'+e(forPrint?this.reportCell(v,c[1]):v)+'</'+tag+'>';
+    return '<html><head><meta charset="utf-8"><title>'+e(rep.title)+'</title><style>body{font-family:Arial,sans-serif;font-size:11px;color:#1f2937;padding:20px}h1{font-size:17px;margin:0}p{color:#6b7280;margin:4px 0 14px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #e5e7eb;padding:5px 6px;text-align:left}th{background:#169B62;color:#fff}.r{text-align:right}tfoot td{font-weight:bold;border-top:2px solid #1f2937}</style></head><body>'
+      +'<h1>'+e(h1)+'</h1><p>'+e(h2)+'</p><table><thead><tr>'+rep.cols.map(c=>cell(c[0],c,'th')).join('')+'</tr></thead><tbody>'
+      +rep.rows.map(r=>'<tr>'+r.map((v,i)=>cell(v,rep.cols[i],'td')).join('')+'</tr>').join('')+'</tbody>'
+      +(rep.total?'<tfoot><tr>'+rep.total.map((v,i)=>cell(v,rep.cols[i],'td')).join('')+'</tr></tfoot>':'')+'</table></body></html>';
+  }
+  async exportReportPdf(rep){
+    const JS=window.jspdf&&window.jspdf.jsPDF;
+    try{if(JS)await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js')}catch(e){}
+    if(!JS||!JS.API||!JS.API.autoTable){
+      const w=window.open('','_blank');
+      if(!w)throw new Error('PDF library unavailable and pop-ups are blocked');
+      w.document.write(this.reportTableHtml(rep,true));w.document.close();w.focus();
+      setTimeout(()=>{try{w.print()}catch(e){}},350);
+      this.toast('PDF library unavailable — use “Save as PDF” in the print dialog');
+      return false;
+    }
+    const doc=new JS({unit:'pt',format:'a4',orientation:rep.cols.length>7?'landscape':'portrait'});
+    const [h1,h2]=this.reportHeading(rep), W=doc.internal.pageSize.getWidth();
+    doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(31,41,55);doc.text(h1,40,44);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(107,114,128);doc.text(doc.splitTextToSize(h2,W-80),40,60);
+    const align={};rep.cols.forEach((c,i)=>{if(c[1])align[i]={halign:'right'}});
+    doc.autoTable({
+      startY:74,margin:{left:40,right:40},
+      head:[rep.cols.map(c=>c[0])],
+      body:rep.rows.map(r=>r.map((v,i)=>this.reportCell(v,rep.cols[i][1]))),
+      foot:rep.total?[rep.total.map((v,i)=>this.reportCell(v,rep.cols[i][1]))]:undefined,
+      showFoot:'lastPage',columnStyles:align,
+      styles:{fontSize:rep.cols.length>9?7:8,cellPadding:4,overflow:'linebreak'},
+      headStyles:{fillColor:[22,155,98],textColor:255,fontStyle:'bold'},
+      footStyles:{fillColor:[241,245,249],textColor:[31,41,55],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[248,250,252]},
+      didDrawPage:()=>{const H=doc.internal.pageSize.getHeight();doc.setFontSize(8);doc.setTextColor(156,163,175);doc.text('Generated '+new Date().toLocaleString()+' · Bhandar360',40,H-20);doc.text('Page '+doc.internal.getNumberOfPages(),W-40,H-20,{align:'right'})},
+    });
+    doc.save(this.reportFileName(rep,'pdf'));
+    return true;
+  }
+  exportReport=(name,fmt)=>async()=>{
+    const key=name+'|'+fmt;
+    if(this.state.reportBusy)return;
+    this.setState({reportBusy:key});
+    try{
+      const rep=await this.buildReport(name);
+      if(!rep.rows.length){this.toast('Nothing to export — no '+name.toLowerCase()+' data'+(rep.periodless?'':' for '+this.reportPeriodLabel().toLowerCase()));return}
+      let saved=true;
+      if(fmt==='CSV')this.exportReportCsv(rep);
+      else if(fmt==='Excel')await this.exportReportXlsx(rep);
+      else saved=await this.exportReportPdf(rep);
+      if(saved)this.toast(name+' downloaded ('+fmt+')');
+    }catch(e){this.toast('Could not export '+name+' — '+e.message)}
+    finally{this.setState({reportBusy:null})}
+  };
   renderReports(){
     const I=this.icons;
-    const reports=[['Inventory valuation','Stock value by cost & category',I.inventory,'#169B62','#e7f6ef'],['Sales report','Revenue, tax & profit by period',I.sales,'#0d9488','#f0fdfa'],['Gross profit','COGS vs revenue breakdown',I.trend,'#169B62','#f2fbf7'],['Purchases report','Spend by supplier & category',I.purchases,'#2563eb','#eff6ff'],['Expiring stock','Items nearing expiry (FEFO)',I.clock,'#d97706','#fffbeb'],['Losses & waste','Write-offs by reason & branch',I.warn,'#dc2626','#fef2f2'],['Stock movement','In/out ledger per product',I.box,'#7c3aed','#faf5ff'],['Product performance','Fast & slow movers',I.reports,'#0891b2','#ecfeff'],['Tax summary','VAT collected & payable',I.doc,'#475569','var(--surface-2)'],['Supplier balances','Accounts payable ageing',I.suppliers,'#ea580c','#fff7ed'],['Customer balances','Accounts receivable ageing',I.customers,'#169B62','#e7f6ef'],['Branch performance','Compare locations',I.store,'#6366f1','#eef2ff'],['Delivery performance','Success rate & avg time by courier',I.truck,'#169B62','#e7f6ef'],['COD collections','Collected vs outstanding settlements',I.money,'#d97706','#fffbeb'],['Courier charges','Delivery & return fees by provider',I.pin,'#0d9488','#f0fdfa']];
+    const reports=[['Inventory valuation','Stock value by cost & category',I.inventory,'#169B62','#e7f6ef'],['Sales report','Revenue, tax & payments by sale',I.sales,'#0d9488','#f0fdfa'],['Gross profit','COGS vs revenue breakdown',I.trend,'#169B62','#f2fbf7'],['Purchases report','Spend by supplier & order',I.purchases,'#2563eb','#eff6ff'],['Expiring stock','Items nearing expiry (FEFO)',I.clock,'#d97706','#fffbeb'],['Losses & waste','Write-offs by reason & branch',I.warn,'#dc2626','#fef2f2'],['Stock movement','In/out ledger per product',I.box,'#7c3aed','#faf5ff'],['Product performance','Fast & slow movers',I.reports,'#0891b2','#ecfeff'],['Tax summary','VAT collected & payable',I.doc,'#475569','var(--surface-2)'],['Supplier balances','Accounts payable',I.suppliers,'#ea580c','#fff7ed'],['Customer balances','Accounts receivable ageing',I.customers,'#169B62','#e7f6ef'],['Branch performance','Compare locations',I.store,'#6366f1','#eef2ff'],['Delivery performance','Success rate by courier',I.truck,'#169B62','#e7f6ef'],['COD collections','Collected vs outstanding settlements',I.money,'#d97706','#fffbeb'],['Courier charges','Delivery & return fees by provider',I.pin,'#0d9488','#f0fdfa']];
+    const period=this.state.reportPeriod||'all', busy=this.state.reportBusy;
+    const periodPicker=this.h('label',{style:{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,color:'var(--text2)'}},'Period',
+      this.h('select',{value:period,onChange:e=>this.setState({reportPeriod:e.target.value}),style:{padding:'8px 10px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13,fontWeight:600,cursor:'pointer'}},
+        this.reportPeriods.map(([v,l])=>this.h('option',{key:v,value:v},l))));
     return this.h('div',{style:{maxWidth:1280,margin:'0 auto'}},
-      this.pageHead('Reports','Downloadable, filterable business reports — export to CSV, Excel or PDF.',[this.btn('Custom report',{icon:I.plus,variant:'ghost'})]),
+      this.pageHead('Reports','Downloadable, filterable business reports — export to CSV, Excel or PDF.',[periodPicker]),
       this.h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}},reports.map((r,i)=>
         this.card([
           this.h('div',{key:'t',style:{display:'flex',alignItems:'center',gap:12,marginBottom:14}},this.h('span',{style:{width:44,height:44,borderRadius:12,background:'color-mix(in srgb, '+r[3]+' 16%, transparent)',color:r[3],display:'flex',alignItems:'center',justifyContent:'center'},dangerouslySetInnerHTML:{__html:r[2]}}),this.h('div',null,this.h('div',{style:{fontSize:15,fontWeight:800}},r[0]),this.h('div',{style:{fontSize:12.5,color:'var(--muted)',marginTop:2,lineHeight:1.35}},r[1]))),
-          this.h('div',{key:'b',style:{display:'flex',gap:7,paddingTop:12,borderTop:'1px solid var(--border)'}},['CSV','Excel','PDF'].map((x,j)=>this.h('button',{key:j,onClick:()=>this.toast(r[0]+' exported ('+x+')'),style:{flex:1,padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:700,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text2)',cursor:'pointer'}},x)))
+          this.h('div',{key:'b',style:{display:'flex',gap:7,paddingTop:12,borderTop:'1px solid var(--border)'}},['CSV','Excel','PDF'].map((x,j)=>{
+            const mine=busy===r[0]+'|'+x;
+            return this.h('button',{key:j,disabled:!!busy,onClick:this.exportReport(r[0],x),style:{flex:1,padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:700,border:'1px solid '+(mine?r[3]:'var(--border)'),background:'var(--surface)',color:mine?r[3]:'var(--text2)',cursor:busy?(mine?'progress':'not-allowed'):'pointer',opacity:busy&&!mine?.55:1}},mine?'…':x)}))
         ],{padding:18}))));
   }
 

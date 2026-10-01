@@ -51,4 +51,22 @@ router.get('/inventory-value', ah(async (req, res) => {
   res.json(row);
 }));
 
+// Business-wide in/out ledger for the Stock movement report. Not part of the
+// data the app preloads, so the report fetches it on demand.
+router.get('/stock-movements', ah(async (req, res) => {
+  const rows = await db
+    .prepare(
+      `SELECT stock_movements.id, stock_movements.created_at, stock_movements.type, stock_movements.qty,
+              stock_movements.ref_type, stock_movements.ref_id,
+              products.name AS product_name, products.sku AS sku, products.unit AS unit
+       FROM stock_movements
+       JOIN products ON products.id = stock_movements.product_id
+       WHERE stock_movements.business_id = ?
+       ORDER BY stock_movements.created_at DESC, stock_movements.id DESC
+       LIMIT 10000`
+    )
+    .all(req.user.business_id);
+  res.json({ items: rows });
+}));
+
 module.exports = router;
