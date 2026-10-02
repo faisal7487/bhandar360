@@ -137,6 +137,10 @@
   .b360-panel__letter{color:var(--b360-charcoal)}
   .b360-draw{animation:b360-draw 2.4s ease-in-out infinite;stroke-dasharray:120}
   .b360-spinner{animation:b360-spin 1.1s linear infinite}
+  .b360-blocker{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb, var(--bg) 72%, transparent);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:b360-in .18s ease-out both;font-family:'Onest',system-ui,sans-serif}
+  .b360-blocker__card{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:30px 28px;background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:0 24px 60px -16px rgba(0,0,0,.28)}
+  .b360-blocker__title{font-size:16px;font-weight:800;color:var(--text)}
+  .b360-blocker__sub{font-size:13px;color:var(--muted);line-height:1.45;margin-top:-6px}
   .b360-topbar{position:absolute;inset:0;overflow:hidden}
   .b360-topbar>div{width:40%;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--b360-emerald),#0d9488);animation:b360-bar 1.5s ease-in-out infinite}
   @media (prefers-reduced-motion:reduce){
@@ -430,6 +434,7 @@
   </div>
 </div>
 </sc-if>
+<sc-if value="{{ blocker }}" hint-placeholder-val="{{ false }}">{{ blockerNode }}</sc-if>
 <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
   <div style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:100;background:#0b1120;color:#fff;padding:13px 20px;border-radius:12px;display:flex;align-items:center;gap:11px;box-shadow:0 16px 40px -8px rgba(0,0,0,.4);animation:sfToast .3s ease both;font-size:14px;font-weight:600">
     <span style="width:22px;height:22px;border-radius:50%;background:#169B62;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ checkIconNode }}</span>
@@ -623,14 +628,14 @@ class Component extends DCLogic {
   };
   deleteRecipe=(id)=>async()=>{
     if(this.state.busy)return;
-    this.setState({busy:true});
+    this.setState({busy:true,deletingRecipe:id});
     try{
       await this.api('/api/recipes/'+id,{method:'DELETE'});
       await this.refresh('recipes','/api/recipes');
       this.setState(s=>({prodSelRecipe:s.prodSelRecipe===id?null:s.prodSelRecipe}));
       this.toast('Recipe deleted');
     }catch(e){this.toast('Could not delete recipe — '+e.message)}
-    finally{this.setState({busy:false})}
+    finally{this.setState({busy:false,deletingRecipe:null})}
   };
   openPoBuilder=()=>{
     if(!this.suppliers.length){this.toast('Add a supplier first — a purchase order needs one');this.setState({quickAddOpen:false});return}
@@ -695,7 +700,7 @@ class Component extends DCLogic {
     try{
       const r=await this.api('/api/auth/me');
       const onboarded=r.user.business&&r.user.business.onboarded;
-      this.setState({me:r.user,industry:(r.user.business&&r.user.business.industry)||'pharmacy',phase:onboarded?'app':'onboarding',onbStep:onboarded?1:2});
+      this.setState({me:r.user,industry:(r.user.business&&r.user.business.industry)||'pharmacy',phase:onboarded?'app':'onboarding',onbStep:onboarded?1:2,dataLoading:!!onboarded});
       await this.loadBusinesses();
       if(onboarded)await this.loadAllData();
     }catch(e){
@@ -826,6 +831,27 @@ class Component extends DCLogic {
       this.h('div',{className:'b360-splash__meta'},
         this.h('div',{className:'b360-splash__word'},'Bhandar',this.h('em',null,'360')),
         this.h('div',{className:'b360-splash__track'},this.h('div',{className:'b360-splash__fill'}))));
+  }
+  // Full-screen "please wait" for multi-step actions that take a few seconds and
+  // swap the whole workspace (creating / switching a business, finishing setup,
+  // signing out) — a 3px top bar or a button label is too easy to miss there,
+  // and the overlay also stops clicks on a workspace that's about to change.
+  async withBlocker(title,sub,fn){
+    this.setState({blocker:{title,sub}});
+    try{return await fn()}
+    finally{this.setState({blocker:null})}
+  }
+  renderBlocker(){
+    const b=this.state.blocker;
+    if(!b)return null;
+    return this.h('div',{className:'b360-blocker',role:'alertdialog','aria-busy':'true','aria-live':'polite','aria-label':b.title},
+      this.h('div',{className:'b360-blocker__card'},
+        this.h('svg',{width:72,height:72,viewBox:'0 0 64 64',fill:'none'},
+          this.h('path',{d:this.B360_RING,stroke:'var(--border)',strokeWidth:4.4,strokeLinecap:'round',fill:'none'}),
+          this.h('path',{d:this.B360_RING,stroke:'#169B62',strokeWidth:4.4,strokeLinecap:'round',fill:'none',className:'b360-draw'}),
+          this.b360B('b360-panel__letter')),
+        this.h('div',{className:'b360-blocker__title'},b.title),
+        b.sub?this.h('div',{className:'b360-blocker__sub'},b.sub):null));
   }
   // Draw-on loader for the main content area while a full data load is in flight.
   renderLoadingPanel(){
@@ -1515,6 +1541,7 @@ class Component extends DCLogic {
         branchAddress:branches[0]&&branches[0].location,
       };
       try{
+        await this.withBlocker(this.tr('Setting up ','সেটআপ হচ্ছে: ')+body.businessName+'…',this.tr('Saving your details and preparing your dashboard.','আপনার তথ্য সংরক্ষণ ও ড্যাশবোর্ড প্রস্তুত হচ্ছে।'),async()=>{
         await this.api('/api/onboarding',{method:'POST',body});
         for(const b of branches.slice(1)){
           await this.api('/api/branches',{method:'POST',body:{name:b.name,type:b.type,address:b.location}});
@@ -1522,6 +1549,7 @@ class Component extends DCLogic {
         const me=await this.api('/api/auth/me');
         this.setState({phase:'app',view:'dashboard',me:me.user,onbMode:'signup',prevBusinessId:null});
         await Promise.all([this.loadAllData(),this.loadBusinesses()]);
+        });
         this.toast('Welcome to Bhandar360! Setup complete.');
       }catch(e){this.toast('Could not finish setup \u2014 '+e.message)}
       finally{this.setState({onbBusy:false})}
@@ -1535,8 +1563,10 @@ class Component extends DCLogic {
     if(this.state.onbMode==='addBusiness'&&n<=2){
       const draftId=this.state.me&&this.state.me.business&&this.state.me.business.id;
       const prevId=this.state.prevBusinessId;
+      const prev=(this.state.businesses||[]).find(b=>b.id===prevId);
       this.setState({onbBusy:true});
       try{
+        await this.withBlocker(this.tr('Cancelling setup…','সেটআপ বাতিল হচ্ছে…'),prev?this.tr('Taking you back to ','ফিরে যাচ্ছেন: ')+prev.name+'.':'',async()=>{
         if(draftId)await this.api('/api/businesses/'+draftId,{method:'DELETE'});
         if(prevId){
           const r=await this.api('/api/businesses/'+prevId+'/switch',{method:'POST'});
@@ -1544,6 +1574,7 @@ class Component extends DCLogic {
           this.setState({me:me.user,industry:(me.user.business&&me.user.business.industry)||'pharmacy',phase:'app',view:'dashboard',onbMode:'signup',prevBusinessId:null});
           await Promise.all([this.loadAllData(),this.loadBusinesses()]);
         }
+        });
       }catch(e){this.toast('Could not cancel \u2014 '+e.message)}
       finally{this.setState({onbBusy:false})}
       return;
@@ -1554,25 +1585,30 @@ class Component extends DCLogic {
   openAddBusiness=async()=>{
     if(this.state.busy)return;
     const prevId=this.state.me&&this.state.me.business&&this.state.me.business.id;
-    this.setState({busy:true});
+    this.setState({busy:true,bizOpen:false});
     try{
+      await this.withBlocker(this.tr('Creating your new business…','নতুন ব্যবসা তৈরি হচ্ছে…'),this.tr('Preparing a fresh workspace — this takes a few seconds.','নতুন ওয়ার্কস্পেস প্রস্তুত হচ্ছে — কয়েক সেকেন্ড লাগবে।'),async()=>{
       await this.api('/api/businesses',{method:'POST',body:{name:'New Business',industry:'pharmacy'}});
       const me=await this.api('/api/auth/me');
       this.setState({me:me.user,industry:'pharmacy',phase:'onboarding',onbStep:2,onbMode:'addBusiness',prevBusinessId:prevId,bizOpen:false,obForm:{name:'',email:'',pw:'',bizName:undefined,address:undefined,branch:'',branches:[{name:'Main branch',type:'Retail outlet',location:''}]}});
       await this.loadBusinesses();
+      });
     }catch(e){this.toast('Could not start setup \u2014 '+e.message)}
     finally{this.setState({busy:false})}
   };
   switchBusiness=(bizId)=>async()=>{
     if(this.state.me&&this.state.me.business&&this.state.me.business.id===bizId){this.setState({bizOpen:false});return}
     if(this.state.busy)return;
-    this.setState({busy:true});
+    const target=(this.state.businesses||[]).find(b=>b.id===bizId);
+    this.setState({busy:true,bizOpen:false});
     try{
+      await this.withBlocker(this.tr('Switching to ','স্যুইচ হচ্ছে: ')+((target&&target.name)||this.tr('business','ব্যবসা'))+'…',this.tr('Loading its stock, sales and settings.','স্টক, বিক্রি ও সেটিংস লোড হচ্ছে।'),async()=>{
       const r=await this.api('/api/businesses/'+bizId+'/switch',{method:'POST'});
       const me=await this.api('/api/auth/me');
       const onboarded=r.business.onboarded;
       this.setState({me:me.user,industry:r.business.industry,bizOpen:false,phase:onboarded?'app':'onboarding',view:'dashboard',onbStep:onboarded?1:2,onbMode:onboarded?'signup':'addBusiness',prevBusinessId:onboarded?null:this.state.me.business.id});
       if(onboarded){await this.loadAllData();this.toast('Switched to '+r.business.name)}
+      });
     }catch(e){this.toast('Could not switch business \u2014 '+e.message)}
     finally{this.setState({busy:false})}
   };
@@ -1590,14 +1626,18 @@ class Component extends DCLogic {
     try{
       const r=await this.api('/api/auth/signin',{method:'POST',body:{email:em,password:pw}});
       const onboarded=r.user.business&&r.user.business.onboarded;
-      this.setState({authErr:'',me:r.user,industry:(r.user.business&&r.user.business.industry)||'pharmacy',phase:onboarded?'app':'onboarding',view:'dashboard',onbStep:onboarded?1:2});
+      this.setState({authErr:'',me:r.user,industry:(r.user.business&&r.user.business.industry)||'pharmacy',phase:onboarded?'app':'onboarding',view:'dashboard',onbStep:onboarded?1:2,dataLoading:!!onboarded});
       await this.loadBusinesses();
       if(onboarded){await this.loadAllData();this.toast(this.tr('Signed in — welcome back!','সাইন ইন সফল — স্বাগতম!'))}
     }catch(e){this.setState({authErr:e.message})}
     finally{this.setState({authBusy:false})}
   };
   goSignup=()=>{this.setState({phase:'onboarding',onbStep:1,authErr:''})};
-  signOut=async()=>{try{await this.api('/api/auth/signout',{method:'POST'})}catch(e){}this.setState({phase:'auth',me:null})};
+  signOut=async()=>{
+    if(this.state.blocker)return;
+    try{await this.withBlocker(this.tr('Signing out…','সাইন আউট হচ্ছে…'),'',()=>this.api('/api/auth/signout',{method:'POST'}))}catch(e){}
+    this.setState({phase:'auth',me:null});
+  };
   openForgot=()=>{this._forgotEmail=this._email;this.setState({authView:'forgot',authErr:'',authMsg:''})};
   backToSignin=()=>{this.setState({authView:'signin',authErr:'',authMsg:''})};
   onForgotEmail=(e)=>{this._forgotEmail=e.target.value};
@@ -2283,7 +2323,9 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
               this.h('select',{value:String(selId),onChange:e=>this.setState({prodSelRecipe:Number(e.target.value),prodQty:''}),style:{...num,appearance:'none'}},
                 recipes.map((x,i)=>this.h('option',{key:i,value:String(x.id)},x.name+(x.product_name?(' → '+x.product_name):''))))),
             this.h('span',{title:'Edit recipe',onClick:()=>this.openRecipeModal(r),style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.edit}}),
-            this.h('span',{title:'Delete recipe',onClick:this.deleteRecipe(r.id),style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'pointer'},dangerouslySetInnerHTML:{__html:I.trash}})),
+            (this.state.deletingRecipe===r.id
+            ?this.h('span',{title:'Deleting…',role:'status',style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:'progress'}},this.brandSpinner(16))
+            :this.h('span',{title:'Delete recipe',onClick:this.deleteRecipe(r.id),style:{width:38,height:38,borderRadius:9,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626',cursor:this.state.busy?'not-allowed':'pointer',opacity:this.state.busy?.5:1},dangerouslySetInnerHTML:{__html:I.trash}}))),
           this.h('div',{key:'meta',style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,gap:10,flexWrap:'wrap'}},
             this.h('span',{style:{fontSize:13.5,color:'var(--muted)'}},'Produces ',this.h('strong',{style:{color:'var(--text)'}},finished?finished.name:'(finished product removed)'),' · batch yield '+(+yield_)),
             this.badge('Bill of materials','#7c3aed','#faf5ff')),
@@ -2903,11 +2945,14 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
     finally{this.setState({sessionsLoading:false})}
   };
   revokeSession=(id)=>async()=>{
+    if(this.state.revokingSession)return;
+    this.setState({revokingSession:id});
     try{
       await this.api('/api/auth/sessions/'+id,{method:'DELETE'});
       this.setState(s=>({sessions:(s.sessions||[]).filter(x=>x.id!==id)}));
       this.toast(this.tr('Session revoked','সেশন বাতিল'));
     }catch(e){this.toast(this.tr('Could not revoke session — ','সেশন বাতিল করা যায়নি — ')+e.message)}
+    finally{this.setState({revokingSession:null})}
   };
   renderProfile(){
     const I=this.icons,T=this.tr;
@@ -2957,7 +3002,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
                 ?this.h('div',{style:{padding:'14px 0',fontSize:13,color:'var(--muted)'}},T('No active sessions found.','কোনো সক্রিয় সেশন পাওয়া যায়নি।'))
                 :sessions.map((s,i)=>this.h('div',{key:s.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 0',borderBottom:i<sessions.length-1?'1px solid var(--border)':'none'}},
                   this.h('div',null,this.h('div',{style:{fontSize:13.5,fontWeight:700}},this.deviceLabel(s.userAgent)),this.h('div',{style:{fontSize:12,color:'var(--muted)'}},(s.ip?s.ip+' · ':'')+this.timeAgo(s.lastSeenAt))),
-                  s.current?this.badge(T('This device','এই ডিভাইস'),'#0E5A3D','#e7f6ef'):this.h('span',{onClick:this.revokeSession(s.id),style:{fontSize:12.5,color:'#dc2626',fontWeight:700,cursor:'pointer'}},T('Revoke','বাতিল'))))],{padding:22})))
+                  s.current?this.badge(T('This device','এই ডিভাইস'),'#0E5A3D','#e7f6ef'):(this.state.revokingSession===s.id?this.h('span',{style:{display:'inline-flex',alignItems:'center',gap:6,fontSize:12.5,color:'var(--muted)',fontWeight:700}},this.brandSpinner(13),T('Revoking…','বাতিল হচ্ছে…')):this.h('span',{onClick:this.revokeSession(s.id),style:{fontSize:12.5,color:'#dc2626',fontWeight:700,cursor:this.state.revokingSession?'not-allowed':'pointer',opacity:this.state.revokingSession?.5:1}},T('Revoke','বাতিল')))))],{padding:22})))
       :this.card([this.h('div',{key:'h',style:{fontSize:16,fontWeight:800,padding:'20px 22px 8px'}},T('Recent activity','সাম্প্রতিক অ্যাক্টিভিটি')),
         this.h('div',{key:'l',style:{padding:'0 22px 20px'}},activity.map((a,i)=>this.h('div',{key:i,style:{display:'flex',gap:13,alignItems:'flex-start',padding:'12px 0',borderBottom:i<activity.length-1?'1px solid var(--border)':'none'}},
           this.h('span',{style:{width:34,height:34,borderRadius:9,background:'color-mix(in srgb, '+a[3]+' 16%, transparent)',color:a[3],display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},dangerouslySetInnerHTML:{__html:a[2]}}),
@@ -3672,6 +3717,7 @@ td{padding:9px 6px;border-bottom:1px solid #f1f3f5}
 
     return {
       isBooting:s.phase==='booting',
+      blocker:!!s.blocker, blockerNode:this.renderBlocker(),
       bootSplash:this.renderSplash(),
       isAuth:s.phase==='auth',
       authErr:s.authErr,
